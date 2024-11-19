@@ -9,9 +9,7 @@ from brain_mri_generative_evals.util import create_dataloader
 
 
 def _get_medicalnet_model():
-    res10 = resnet10(
-        sample_input_D=160, sample_input_H=192, sample_input_W=176, num_seg_classes=10
-    )
+    res10 = resnet10()
     res10.conv_seg = torch.nn.Sequential(
         torch.nn.AdaptiveAvgPool3d(1), torch.nn.Flatten()
     )
