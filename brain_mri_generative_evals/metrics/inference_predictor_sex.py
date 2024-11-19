@@ -1,15 +1,10 @@
 import argparse
 import json
-
 import os
 import sys
-
-
 import torch
 import torch.nn as nn
-
 import torch.amp
-import wandb
 import nibabel as nib
 
 
@@ -59,24 +54,31 @@ def infer_on_validation_set(model, val_loader, device):
     total_sex = 0
     all_preds = []
     all_labels = []
-    
+    print
     with torch.no_grad():
         for batch in val_loader:
             
             images = batch["image"].to(device)
-            
+            print(images.shape)
             sex_labels = batch["sex"].to(device)
             outputs = model(images)
-            sex_preds = torch.sigmoid(outputs) > 0.5
+            sex_preds = (torch.sigmoid(outputs) > 0.5).long().squeeze()
+            # print("sex_preds: ", sex_preds)
+            # print("sex_labels: ", sex_labels)
+            print("sex_preds: ", sex_preds.shape)
+            print("sex_labels: ", sex_labels.shape)
+            
             correct_sex += (sex_preds == sex_labels).sum().item()
             total_sex += sex_labels.size(0)
             all_preds.extend(sex_preds.cpu().numpy())
             all_labels.extend(sex_labels.cpu().numpy())
-            # Print predictions and labels for each sample in batch
-            for pred, label in zip(sex_preds.cpu().numpy(), sex_labels.cpu().numpy()):
-                print(f"Prediction: {'Male' if pred else 'Female'}, "
-                      f"True Label: {'Male' if label else 'Female'}, "
-                      f"Match: {pred == label}")
+            # # Print predictions and labels for each sample in batch
+            # for pred, label in zip(sex_preds.cpu().numpy(), sex_labels.cpu().numpy()):
+            #     print(f"Prediction: {'Male' if pred else 'Female'}, "
+            #           f"True Label: {'Male' if label else 'Female'}, "
+            #           f"Match: {pred == label}")
+            print("correct_sex: ", correct_sex)
+            print("total_sex: ", total_sex)
     
     accuracy = correct_sex / total_sex
     print(f"Validation Accuracy: {accuracy:.4f}")
@@ -135,7 +137,8 @@ if __name__ == "__main__":
 
         _, val_loader, _, _ =  prepare_dataloader_from_list(
             args,
-            args.diffusion_train["batch_size"],
+            # args.diffusion_train["batch_size"],
+            100,
             args.diffusion_train["patch_size"],
             randcrop=False,
             # rank=rank,
@@ -150,7 +153,8 @@ if __name__ == "__main__":
     else:
         val_loader = prepare_val_dataloader_from_directory(
             args.validation_dir,
-            args.diffusion_train["batch_size"],
+            100,
+            # args.diffusion_train["batch_size"],
             args.diffusion_train["patch_size"],
             randcrop=False,
             cross_attention_dim=args.diffusion_def["cross_attention_dim"],
