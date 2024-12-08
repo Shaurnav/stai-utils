@@ -25,7 +25,7 @@ class NPZDataset(Dataset):
         return data
 
 
-def create_dataloader(directory, batch_size=1, shuffle=False):
+def create_dataloader_from_dir(directory, batch_size=1, shuffle=False):
     dataset = NPZDataset(directory=directory)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return dataloader

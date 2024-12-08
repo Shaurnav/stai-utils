@@ -4,8 +4,8 @@ import torch
 from torchvision.models import resnet50
 from generative.metrics import FIDMetric
 
-from brain_mri_generative_evals.models.resnet import resnet10
-from brain_mri_generative_evals.util import create_dataloader
+from stai_utils.evaluations.models.resnet import resnet10
+from stai_utils.evaluations.util import create_dataloader_from_dir
 
 
 def _get_medicalnet_model():
@@ -29,9 +29,8 @@ def _get_imagenet_model():
 
 
 def _extract_medicalnet_features_to_dir(
-    src_dir, dest_dir, feature_extractor, device, skip_existing=False
+    loader, dest_dir, feature_extractor, device, skip_existing=False
 ):
-    loader = create_dataloader(src_dir)
     for i, data in enumerate(loader):
         save_path = os.path.join(dest_dir, f"feat_{i}.npz")
         if skip_existing and os.path.exists(save_path):
@@ -47,7 +46,7 @@ def _extract_medicalnet_features_to_dir(
 
 
 def _extract_imagenet_features_to_dir(
-    src_dir, dest_dir, feature_extractor, device, skip_existing=False
+    loader, dest_dir, feature_extractor, device, skip_existing=False
 ):
     # transforms to convert the input image to the format expected by the model
     def subtract_mean(x: torch.Tensor) -> torch.Tensor:
@@ -76,7 +75,6 @@ def _extract_imagenet_features_to_dir(
 
         return feature_image
 
-    loader = create_dataloader(src_dir)
     for i, data in enumerate(loader):
         # Convert to 2d
         image = data["image"]
@@ -94,7 +92,12 @@ def _extract_imagenet_features_to_dir(
 
 
 def evaluate_fid_medicalnet3d(
-    real_img_dir, fake_img_dir, real_feat_dir, fake_feat_dir, device, skip_existing
+    real_img_loader,
+    fake_img_loader,
+    real_feat_dir,
+    fake_feat_dir,
+    device,
+    skip_existing,
 ):
     # Load the medicalnet model
     medicalnet = _get_medicalnet_model().to(device)
@@ -102,25 +105,30 @@ def evaluate_fid_medicalnet3d(
     # Extract features from the real and fake samples
     print("Extracting medicalnet features...")
     _extract_medicalnet_features_to_dir(
-        real_img_dir, real_feat_dir, medicalnet, device, skip_existing=skip_existing
+        real_img_loader, real_feat_dir, medicalnet, device, skip_existing=skip_existing
     )
     _extract_medicalnet_features_to_dir(
-        fake_img_dir, fake_feat_dir, medicalnet, device, skip_existing=skip_existing
+        fake_img_loader, fake_feat_dir, medicalnet, device, skip_existing=skip_existing
     )
 
-    real_loader = create_dataloader(real_feat_dir)
-    fake_loader = create_dataloader(fake_feat_dir)
+    real_feat_loader = create_dataloader_from_dir(real_feat_dir)
+    fake_feat_loader = create_dataloader_from_dir(fake_feat_dir)
 
     real_feats = []
     fake_feats = []
-    for real, fake in zip(real_loader, fake_loader):
+    for real, fake in zip(real_feat_loader, fake_feat_loader):
         real_feats.append(real["feat"])
         fake_feats.append(fake["feat"])
     return FIDMetric()(torch.vstack(fake_feats), torch.vstack(real_feats)).item()
 
 
 def evaluate_fid_imagenet2d(
-    real_img_dir, fake_img_dir, real_feat_dir, fake_feat_dir, device, skip_existing
+    real_img_loader,
+    fake_img_loader,
+    real_feat_dir,
+    fake_feat_dir,
+    device,
+    skip_existing,
 ):
     # Load the imagenet model
     imagenet = _get_imagenet_model().to(device)
@@ -128,18 +136,18 @@ def evaluate_fid_imagenet2d(
     # Extract features from the real and fake samples
     print("Extracting imagenet features...")
     _extract_imagenet_features_to_dir(
-        real_img_dir, real_feat_dir, imagenet, device, skip_existing=skip_existing
+        real_img_loader, real_feat_dir, imagenet, device, skip_existing=skip_existing
     )
     _extract_imagenet_features_to_dir(
-        fake_img_dir, fake_feat_dir, imagenet, device, skip_existing=skip_existing
+        fake_img_loader, fake_feat_dir, imagenet, device, skip_existing=skip_existing
     )
 
-    real_loader = create_dataloader(real_feat_dir)
-    fake_loader = create_dataloader(fake_feat_dir)
+    real_feat_loader = create_dataloader_from_dir(real_feat_dir)
+    fake_feat_loader = create_dataloader_from_dir(fake_feat_dir)
 
     real_feats = []
     fake_feats = []
-    for real, fake in zip(real_loader, fake_loader):
+    for real, fake in zip(real_feat_loader, fake_feat_loader):
         real_feats.append(real["feat"])
         fake_feats.append(fake["feat"])
     return FIDMetric()(torch.vstack(fake_feats), torch.vstack(real_feats)).item()

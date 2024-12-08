@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score
 
-from brain_mri_generative_evals.models.unet3d.model import UNet3D
-from brain_mri_generative_evals.models.finetune_model import FinetuneModel
-from brain_mri_generative_evals.util import create_dataloader
-from brain_mri_generative_evals.models.resnet import resnet50
+from stai_utils.evaluations.models.unet3d.model import UNet3D
+from stai_utils.evaluations.models.finetune_model import FinetuneModel
+from stai_utils.evaluations.models.resnet import resnet50
 
 
 def load_model(checkpoint_path, device):
@@ -18,22 +17,17 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def evaluate_sex_classification(directory_path, args):
+def evaluate_sex_classification(loader, args):
     model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
     model = load_model(model_checkpoint, args.device)
 
-    # Load validation data
-    val_loader = create_dataloader(directory_path)
-
     correct_sex = 0
     total_sex = 0
-    all_preds = []
-    all_labels = []
+    result_list = []
     with torch.no_grad():
-        for batch in val_loader:
-
+        for i, batch in enumerate(loader):
+            print(f"Predicting sex... {i}/{len(loader)}")
             images = batch["image"].to(args.device).float()
-            print(images.shape)
             sex_labels = batch["sex"].to(args.device)
             outputs = model(images)
             sex_preds = (torch.sigmoid(outputs) > 0.5).long()
@@ -42,15 +36,13 @@ def evaluate_sex_classification(directory_path, args):
 
             correct_sex += (sex_preds == sex_labels).sum().item()
             total_sex += sex_labels.size(0)
-            all_preds.extend(sex_preds.cpu().numpy())
-            all_labels.extend(sex_labels.cpu().numpy())
-            # # Print predictions and labels for each sample in batch
-            # for pred, label in zip(sex_preds.cpu().numpy(), sex_labels.cpu().numpy()):
-            #     print(f"Prediction: {'Male' if pred else 'Female'}, "
-            #           f"True Label: {'Male' if label else 'Female'}, "
-            #           f"Match: {pred == label}")
-            print("correct_sex: ", correct_sex)
-            print("total_sex: ", total_sex)
+
+            result_dict = {
+                "acc": (sex_preds == sex_labels).sum().item(),
+                "pred": sex_preds.cpu().numpy().item(),
+                "label": sex_labels.cpu().numpy().item(),
+            }
+            result_list.append(result_dict)
 
     accuracy = correct_sex / total_sex
     print(f"Validation Accuracy: {accuracy:.4f}")
@@ -74,10 +66,10 @@ def evaluate_sex_classification(directory_path, args):
 
     # print(f"Sensitivity: {sensitivity:.4f}")
     # print(f"Specificity: {specificity:.4f}")
-    return accuracy  # , sensitivity, specificity
+    return accuracy, result_list  # , sensitivity, specificity
 
 
-def evaluate_sex_classification_unet3dencoder(directory_path, args):
+def evaluate_sex_classification_unet3dencoder(loader, args):
     def evaluate_model(val_loader, model, device):
         model.eval()
         labels_list_val = []
@@ -96,9 +88,6 @@ def evaluate_sex_classification_unet3dencoder(directory_path, args):
                 predicted_classes = torch.argmax(val_outputs, dim=1).cpu().numpy()
                 outputs_list_val.extend(predicted_classes)
         return labels_list_val, outputs_list_val
-
-    val_loader = create_dataloader(directory_path)
-    print(f"Number of validation images: {len(val_loader.dataset)}")
 
     encoder = UNet3D(
         1,
@@ -126,6 +115,6 @@ def evaluate_sex_classification_unet3dencoder(directory_path, args):
     model.to(args.device)
     model.eval()
 
-    labels_list_val, outputs_list_val = evaluate_model(val_loader, model, args.device)
+    labels_list_val, outputs_list_val = evaluate_model(loader, model, args.device)
     accuracy = accuracy_score(labels_list_val, outputs_list_val)
     return accuracy
