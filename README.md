@@ -1,1 +1,2 @@
-# brain-mri-generative-evals
+# STAI Utilities
+Utility and helper functions for STAI Lab.
