@@ -1,6 +1,8 @@
 import pickle
 import numpy as np
 import os
+import torch
+from torch.utils.data import Dataset, DataLoader
 
 from monai.data import DataLoader
 from monai.transforms import (
@@ -15,14 +17,9 @@ from monai.transforms import (
     ScaleIntensityRangePercentilesd,
     Spacingd,
 )
-import torch
-
-from torch.utils.data import Dataset, DataLoader
-
-# from create_dataset import HCPT1wDataset
 
 
-def get_t1_all_file_list():
+def get_t1_all_file_list(zscore=False):
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
@@ -108,9 +105,14 @@ def get_t1_all_file_list():
             # Debug output to check the results
             print(train_images[-1])  # Print the last path
 
-    # process z normalization for age
-
-    ages_array = np.array(train_ages)
+    train_ages = np.array(train_ages)
+    val_ages = np.array(val_ages)
+    if zscore:
+        # Z-score normalization for age
+        mu = train_ages.mean()
+        sigma = train_ages.std()
+        train_ages = (train_ages - mu) / (sigma + 1e-8)
+        val_ages = (val_ages - mu) / (sigma + 1e-8)
 
     train_images = [file_dir_prefix + train_image for train_image in train_images]
     val_images = [file_dir_prefix + val_image for val_image in val_images]
