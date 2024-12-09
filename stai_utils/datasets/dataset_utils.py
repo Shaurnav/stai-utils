@@ -22,10 +22,11 @@ from torch.utils.data import Dataset, DataLoader
 # from create_dataset import HCPT1wDataset
 
 
-def get_t1_all_file_list(file_dir_prefix="/scr/fangruih/stru/"):
+def get_t1_all_file_list():
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
+        file_dir_prefix = "/simurgh/u/alanqw/data/fangruih/stru/"
     elif cluster_name == "haic":
         prefix = "/hai/scratch/fangruih"
         file_dir_prefix = "/hai/scratch/fangruih/data/"
