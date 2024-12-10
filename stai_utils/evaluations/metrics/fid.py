@@ -31,16 +31,36 @@ def _get_imagenet_model():
 def _extract_medicalnet_features_to_dir(
     loader, dest_dir, feature_extractor, device, skip_existing=False
 ):
+    def __itensity_normalize_one_volume__(volume):
+        """
+        From MedicalNet repository: https://github.com/Tencent/MedicalNet/blob/master/datasets/brains18.py.
+        They do data resizing and z-score normalization before feeding the data to the model.
+
+        normalize the itensity of an nd volume based on the mean and std of nonzeor region
+        inputs:
+            volume: the input nd volume
+        outputs:
+            out: the normalized nd volume
+        """
+
+        pixels = volume[volume > 0]
+        mean = pixels.mean()
+        std = pixels.std()
+        out = (volume - mean) / std
+        out_random = np.random.normal(0, 1, size=volume.shape)
+        out[volume == 0] = out_random[volume == 0]
+        return out
+
     for i, data in enumerate(loader):
         save_path = os.path.join(dest_dir, f"feat_{i}.npz")
         if skip_existing and os.path.exists(save_path):
             print(f"Skipping because {save_path} already exists...")
             continue
         image = torch.tensor(data["image"]).float().to(device)
+        image = __itensity_normalize_one_volume__(image)
         age = data["age"]
         sex = data["sex"]
         feat = feature_extractor(image)
-        print(feat.shape)
 
         np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
 
