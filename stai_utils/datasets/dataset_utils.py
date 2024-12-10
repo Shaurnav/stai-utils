@@ -16,10 +16,11 @@ from monai.transforms import (
     RandSpatialCropd,
     ScaleIntensityRangePercentilesd,
     Spacingd,
+    ResizeWithPadOrCropd,
 )
 
 
-def get_t1_all_file_list(zscore=False):
+def get_t1_all_file_list():
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
@@ -42,8 +43,10 @@ def get_t1_all_file_list(zscore=False):
     ]
     train_images = []
     train_ages = []
+    train_sexes = []
     val_images = []
     val_ages = []
+    val_sexes = []
 
     for dataset_name in dataset_names:
         with open(dataset_name, "rb") as file:
@@ -82,37 +85,13 @@ def get_t1_all_file_list(zscore=False):
                 else data["val"]["sex"]
             )
 
-            # Append new data to existing lists
-            if not train_images:  # More Pythonic way to check if the list is empty
-                # Direct assignment for the first file
-                train_images = train_new_images
-                train_ages = train_new_ages
-                train_sex = train_new_sex
+            train_images += train_new_images
+            train_ages += train_new_ages
+            train_sexes += train_new_sex
 
-                val_images = val_new_images
-                val_ages = val_new_ages
-                val_sex = val_new_sex
-            else:
-                # Concatenation for subsequent files
-                train_images += train_new_images
-                train_ages += train_new_ages
-                train_sex += train_new_sex
-
-                val_images += val_new_images
-                val_ages += val_new_ages
-                val_sex += val_new_sex
-
-            # Debug output to check the results
-            print(train_images[-1])  # Print the last path
-
-    train_ages = np.array(train_ages)
-    val_ages = np.array(val_ages)
-    if zscore:
-        # Z-score normalization for age
-        mu = train_ages.mean()
-        sigma = train_ages.std()
-        train_ages = (train_ages - mu) / (sigma + 1e-8)
-        val_ages = (val_ages - mu) / (sigma + 1e-8)
+            val_images += val_new_images
+            val_ages += val_new_ages
+            val_sexes += val_new_sex
 
     train_images = [file_dir_prefix + train_image for train_image in train_images]
     val_images = [file_dir_prefix + val_image for val_image in val_images]
@@ -120,118 +99,7 @@ def get_t1_all_file_list(zscore=False):
     print(len(train_images))
     print(len(val_images))
 
-    # Zip the conditions into one single list
-    train_conditions = [(a, b) for a, b in zip(train_ages, train_sex)]
-    val_conditions = [(a, b) for a, b in zip(val_ages, val_sex)]
-
-    return train_images, train_conditions, val_images, val_conditions
-
-
-def prepare_dataloader_from_list(
-    batch_size,
-    patch_size,
-    randcrop=True,
-    rank=0,
-    world_size=1,
-    size_divisible=16,
-    channel=0,
-    spacing=(1.0, 1.0, 1.0),
-):
-    ddp_bool = world_size > 1
-    assert channel in [0, 1, 2, 3], "Choose a valid channel"
-    if randcrop:
-        train_crop_transform = RandSpatialCropd(
-            keys=["image"], roi_size=patch_size, random_size=False
-        )
-        val_patch_size = [
-            int(np.ceil(1.5 * p / size_divisible) * size_divisible) for p in patch_size
-        ]
-    else:
-        train_crop_transform = CenterSpatialCropd(keys=["image"], roi_size=patch_size)
-        val_patch_size = patch_size
-
-    train_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
-            # EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
-            EnsureChannelFirstd(keys=["image"], channel_dim=0),
-            EnsureTyped(keys=["image"]),
-            Orientationd(keys=["image"], axcodes="RAS"),
-            Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
-            train_crop_transform,
-            ScaleIntensityRangePercentilesd(
-                keys="image", lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys="image", dtype=torch.float32),
-        ]
-    )
-    val_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
-            # EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
-            EnsureChannelFirstd(keys=["image"], channel_dim=0),
-            EnsureTyped(keys=["image"]),
-            Orientationd(keys=["image"], axcodes="RAS"),
-            Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
-            CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
-            ScaleIntensityRangePercentilesd(
-                keys="image", lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys="image", dtype=torch.float32),
-        ]
-    )
-
-    train_images, train_conditions, val_images, val_conditions = get_t1_all_file_list()
-
-    train_ds = FileListDataset(
-        train_images,
-        condition_list=train_conditions,
-        transform=train_transforms,
-    )
-
-    val_ds = FileListDataset(
-        val_images,
-        condition_list=val_conditions,
-        transform=val_transforms,
-    )
-
-    if ddp_bool:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(
-            train_ds, num_replicas=world_size, rank=rank
-        )
-        val_sampler = torch.utils.data.distributed.DistributedSampler(
-            val_ds, num_replicas=world_size, rank=rank
-        )
-    else:
-        train_sampler = None
-        val_sampler = None
-
-    print("shuffle for train: ", (not ddp_bool))
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        shuffle=(not ddp_bool),
-        num_workers=0,
-        pin_memory=False,
-        sampler=train_sampler,
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=0,
-        pin_memory=False,
-        sampler=val_sampler,
-    )
-    if rank == 0:
-        # print(f'Image shape {train_ds[0]["image"]}')
-        print(f'Train Image shape {train_ds[0]["image"].shape}')
-        print(f'Val Image shape {val_ds[0]["image"].shape}')
-    return train_loader, val_loader
+    return train_images, train_ages, train_sexes, val_images, val_ages, val_sexes
 
 
 class FileListDataset(Dataset):
@@ -259,3 +127,129 @@ class FileListDataset(Dataset):
         data["age"] = condition_tensor[0]
         data["sex"] = condition_tensor[1]
         return data
+
+
+class T1All:
+    def __init__(
+        self,
+        img_size,
+        num_workers,
+        zscore_age=False,
+        rank=0,
+        world_size=1,
+        channel=0,
+        spacing=(1.0, 1.0, 1.0),
+    ):
+        self.num_workers = num_workers
+        self.zscore_age = zscore_age
+        self.rank = rank
+        self.world_size = world_size
+        self.ddp_bool = world_size > 1
+        assert channel in [0, 1, 2, 3], "Choose a valid channel"
+
+        self.age_mu = 0
+        self.age_sigma = 1
+
+        self.train_transforms = Compose(
+            [
+                LoadImaged(keys=["image"]),
+                EnsureChannelFirstd(keys=["image"]),
+                Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
+                EnsureChannelFirstd(keys=["image"], channel_dim=0),
+                EnsureTyped(keys=["image"]),
+                Orientationd(keys=["image"], axcodes="RAS"),
+                Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=["image"], spatial_size=img_size),
+                # train_crop_transform,
+                ScaleIntensityRangePercentilesd(
+                    keys="image", lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys="image", dtype=torch.float32),
+            ]
+        )
+        self.val_transforms = Compose(
+            [
+                LoadImaged(keys=["image"]),
+                EnsureChannelFirstd(keys=["image"]),
+                Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
+                EnsureChannelFirstd(keys=["image"], channel_dim=0),
+                EnsureTyped(keys=["image"]),
+                Orientationd(keys=["image"], axcodes="RAS"),
+                Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=["image"], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys="image", lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys="image", dtype=torch.float32),
+            ]
+        )
+
+    def zscore_normalize_age(self, age):
+        return (age - self.age_mu) / (self.age_sigma + 1e-8)
+
+    def zscore_unnormalize_age(self, age):
+        return age * self.age_sigma + self.age_mu
+
+    def get_dataloaders(
+        self,
+        batch_size,
+    ):
+        train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
+            get_t1_all_file_list()
+        )
+
+        train_ages = np.array(train_ages)
+        val_ages = np.array(val_ages)
+        if self.zscore_age:
+            # Z-score normalization for age
+            self.age_mu = train_ages.mean()
+            self.age_sigma = train_ages.std()
+            train_ages = self.zscore_normalize_age(train_ages)
+            val_ages = self.zscore_normalize_age(val_ages)
+
+        # Zip the conditions into one single list
+        train_conditions = [(a, b) for a, b in zip(train_ages, train_sexes)]
+        val_conditions = [(a, b) for a, b in zip(val_ages, val_sexes)]
+
+        train_ds = FileListDataset(
+            train_images,
+            condition_list=train_conditions,
+            transform=self.train_transforms,
+        )
+
+        val_ds = FileListDataset(
+            val_images,
+            condition_list=val_conditions,
+            transform=self.val_transforms,
+        )
+
+        if self.ddp_bool:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(
+                train_ds, num_replicas=self.world_size, rank=self.rank
+            )
+            val_sampler = torch.utils.data.distributed.DistributedSampler(
+                val_ds, num_replicas=self.world_size, rank=self.rank
+            )
+        else:
+            train_sampler = None
+            val_sampler = None
+
+        print("shuffle for train: ", (not self.ddp_bool))
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=(not self.ddp_bool),
+            num_workers=self.num_workers,
+            pin_memory=False,
+            sampler=train_sampler,
+        )
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            sampler=val_sampler,
+        )
+        return train_loader, val_loader
