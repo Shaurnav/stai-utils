@@ -1,10 +1,11 @@
+import os
 import torch
 
 from stai_utils.evaluations.models.unet3d.model import UNet3D
 from stai_utils.evaluations.models.finetune_model import FinetuneModel
 
 
-def get_model():
+def get_model(checkpoint_path):
     encoder = UNet3D(
         1,
         1,
@@ -25,16 +26,26 @@ def get_model():
         dim=3,
         use_checkpoint=False,
     )
-    checkpoint_path = (
-        "/hai/scratch/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
-    )
     state_dict = torch.load(checkpoint_path)["state_dict"]
     model.load_state_dict(state_dict)
     return model
 
 
 def evaluate_age_regression(loader, args):
-    model = get_model()
+    cluster_name = os.getenv("CLUSTER_NAME")
+    if cluster_name == "haic":
+        checkpoint_path = (
+            "/hai/scratch/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
+        )
+    elif cluster_name == "sc":
+        checkpoint_path = (
+            "/simurgh/u/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
+        )
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
+        )
+    model = get_model(checkpoint_path)
     model.to(args.device)
     model.eval()
 
@@ -42,7 +53,7 @@ def evaluate_age_regression(loader, args):
     result_list = []
     with torch.no_grad():
         for val_data in loader:
-            images = val_data["image"].float().to(args.device)
+            images = val_data["vol_data"].float().to(args.device)
             labels = val_data["age"][None].float().to(args.device)
             outputs = model(images)["pred_out"]
             val_loss = torch.nn.L1Loss()(outputs, labels.float())

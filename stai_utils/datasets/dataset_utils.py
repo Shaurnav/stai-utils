@@ -108,17 +108,19 @@ class FileListDataset(Dataset):
         file_list,
         condition_list=None,
         transform=None,
+        data_key="image",
     ):
         self.file_list = file_list
         self.transform = transform
         self.condition_list = condition_list
+        self.data_key = data_key
 
     def __len__(self):
         return len(self.file_list)
 
     def __getitem__(self, idx):
         img_path = self.file_list[idx]
-        data = {"image": img_path}
+        data = {self.data_key: img_path}
 
         if self.transform:
             data = self.transform(data)
@@ -139,6 +141,7 @@ class T1All:
         world_size=1,
         channel=0,
         spacing=(1.0, 1.0, 1.0),
+        data_key="image",
     ):
         self.num_workers = num_workers
         self.zscore_age = zscore_age
@@ -146,42 +149,43 @@ class T1All:
         self.world_size = world_size
         self.ddp_bool = world_size > 1
         assert channel in [0, 1, 2, 3], "Choose a valid channel"
+        self.data_key = data_key
 
         self.age_mu = 0
         self.age_sigma = 1
 
         self.train_transforms = Compose(
             [
-                LoadImaged(keys=["image"]),
-                EnsureChannelFirstd(keys=["image"]),
-                Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
-                EnsureChannelFirstd(keys=["image"], channel_dim=0),
-                EnsureTyped(keys=["image"]),
-                Orientationd(keys=["image"], axcodes="RAS"),
-                Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
-                ResizeWithPadOrCropd(keys=["image"], spatial_size=img_size),
+                LoadImaged(keys=[data_key]),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[channel, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
                 # train_crop_transform,
                 ScaleIntensityRangePercentilesd(
-                    keys="image", lower=0, upper=99.5, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
                 ),
-                EnsureTyped(keys="image", dtype=torch.float32),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
         )
         self.val_transforms = Compose(
             [
-                LoadImaged(keys=["image"]),
-                EnsureChannelFirstd(keys=["image"]),
-                Lambdad(keys="image", func=lambda x: x[channel, :, :, :]),
-                EnsureChannelFirstd(keys=["image"], channel_dim=0),
-                EnsureTyped(keys=["image"]),
-                Orientationd(keys=["image"], axcodes="RAS"),
-                Spacingd(keys=["image"], pixdim=spacing, mode=("bilinear")),
-                ResizeWithPadOrCropd(keys=["image"], spatial_size=img_size),
+                LoadImaged(keys=[data_key]),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[channel, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
                 # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
                 ScaleIntensityRangePercentilesd(
-                    keys="image", lower=0, upper=99.5, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
                 ),
-                EnsureTyped(keys="image", dtype=torch.float32),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
         )
 
@@ -216,12 +220,14 @@ class T1All:
             train_images,
             condition_list=train_conditions,
             transform=self.train_transforms,
+            data_key=self.data_key,
         )
 
         val_ds = FileListDataset(
             val_images,
             condition_list=val_conditions,
             transform=self.val_transforms,
+            data_key=self.data_key,
         )
 
         if self.ddp_bool:
