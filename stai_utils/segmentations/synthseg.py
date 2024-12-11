@@ -1,5 +1,6 @@
 import os
 import subprocess
+import numpy as np
 
 
 def shell_command(command):
@@ -17,6 +18,18 @@ def get_all_file_paths(directory):
             file_paths.append(os.path.join(root, file))
 
     return file_paths
+
+
+def check_correct_keys(paths):
+    first = paths[0]
+    first_data = dict(np.load(first))
+    if "image" in first_data and "vol_data" not in first_data:
+        print('Changing key "image" to "vol_data" for all paths...')
+        for path in paths:
+            data = dict(np.load(path))
+            if "image" in data and "vol_data" not in data:
+                data["vol_data"] = data.pop("image")
+                np.savez(path, **data)
 
 
 def run_synthseg(input_dir, output_dir, skip_existing=True):
@@ -45,14 +58,16 @@ def run_synthseg(input_dir, output_dir, skip_existing=True):
         input_paths = filtered_input_paths
         output_paths = filtered_output_paths
 
+    check_correct_keys(input_paths)
+
     # Dump input/output paths to txt files
     input_filename = os.path.join(input_dir, "synthseg_input_paths.txt")
-    output_filename = os.path.join(output_dir, "synthseg_output_paths.txt")
+    output_filename = os.path.join(input_dir, "synthseg_output_paths.txt")
     with open(input_filename, "w") as f:
-        for path in filtered_input_paths:
+        for path in input_paths:
             f.write(f"{path}\n")
     with open(output_filename, "w") as f:
-        for path in filtered_output_paths:
+        for path in output_paths:
             f.write(f"{path}\n")
     print(f"Input paths saved to {input_filename}")
     print(f"Output paths saved to {output_filename}")
