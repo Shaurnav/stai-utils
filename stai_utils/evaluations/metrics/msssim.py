@@ -11,8 +11,8 @@ def compute_pairwise_msssim(loader, N=1000):
             if count >= N:
                 break
             if i != j:
-                img1 = torch.tensor(data1["vol_data"]).float()
-                img2 = torch.tensor(data2["vol_data"]).float()
+                img1 = data1["vol_data"].float()
+                img2 = data2["vol_data"].float()
                 tot_metric += msssim(img1, img2).item()
                 count += 1
 
