@@ -2,6 +2,8 @@ import os
 import numpy as np
 import torch
 from torchvision.models import resnet50
+from tqdm import tqdm
+
 from generative.metrics import FIDMetric
 
 from stai_utils.evaluations.models.resnet import resnet10
@@ -9,14 +11,20 @@ from stai_utils.evaluations.util import create_dataloader_from_dir
 
 
 def _get_medicalnet_model():
+    if os.getenv("CLUSTER_NAME") == "haic":
+        checkpoint_path = "/hai/scratch/alanqw/models/MedicalNet/MedicalNet_pytorch_files2/pretrain/resnet_10.pth"
+    elif os.getenv("CLUSTER_NAME") == "sc":
+        checkpoint_path = "/simurgh/u/alanqw/models/MedicalNet/MedicalNet_pytorch_files2/pretrain/resnet_10.pth"
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {os.getenv('CLUSTER_NAME')}. Please set the CLUSTER_NAME environment variable correctly."
+        )
     res10 = resnet10()
     res10.conv_seg = torch.nn.Sequential(
         torch.nn.AdaptiveAvgPool3d(1), torch.nn.Flatten()
     )
     res10 = torch.nn.DataParallel(res10)
-    ckpt = torch.load(
-        "/hai/scratch/alanqw/models/MedicalNet/MedicalNet_pytorch_files2/pretrain/resnet_10.pth"
-    )
+    ckpt = torch.load(checkpoint_path)
     res10.load_state_dict(ckpt["state_dict"], strict=False)
     res10.eval()
     return res10
@@ -31,16 +39,42 @@ def _get_imagenet_model():
 def _extract_medicalnet_features_to_dir(
     loader, dest_dir, feature_extractor, device, skip_existing=False
 ):
-    for i, data in enumerate(loader):
+    def __itensity_normalize_one_volume__(volume):
+        """
+        From MedicalNet repository: https://github.com/Tencent/MedicalNet/blob/master/datasets/brains18.py.
+        They do data resizing and z-score normalization before feeding the data to the model.
+
+        normalize the itensity of an nd volume based on the mean and std of nonzeor region
+        inputs:
+            volume: the input nd volume
+        outputs:
+            out: the normalized nd volume
+        """
+
+        pixels = volume[volume > 0]
+        mean = pixels.mean()
+        std = pixels.std()
+        out = (volume - mean) / std
+        out_random = (
+            torch.tensor(np.random.normal(0, 1, size=volume.shape))
+            .float()
+            .to(volume.device)
+        )
+        out[volume == 0] = out_random[volume == 0]
+        return out
+
+    dataset = loader.dataset
+    for i in tqdm(range(len(dataset)), desc="Extracting MedicalNet features"):
         save_path = os.path.join(dest_dir, f"feat_{i}.npz")
         if skip_existing and os.path.exists(save_path):
             print(f"Skipping because {save_path} already exists...")
             continue
-        image = torch.tensor(data["image"]).float().to(device)
+        data = dataset[i]
+        image = torch.tensor(data["vol_data"]).float().to(device)[None]
+        image = __itensity_normalize_one_volume__(image)
         age = data["age"]
         sex = data["sex"]
         feat = feature_extractor(image)
-        print(feat.shape)
 
         np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
 
@@ -75,14 +109,17 @@ def _extract_imagenet_features_to_dir(
 
         return feature_image
 
-    for i, data in enumerate(loader):
-        # Convert to 2d
-        image = data["image"]
-        image = image[:, :, image.shape[2] // 2]
+    dataset = loader.dataset
+    for i in tqdm(range(len(dataset)), desc="Extracting ImageNet features"):
         save_path = os.path.join(dest_dir, f"feat_{i}.npz")
         if skip_existing and os.path.exists(save_path):
             print(f"Skipping because {save_path} already exists...")
             continue
+
+        data = dataset[i]
+        # Convert to 2d
+        image = data["vol_data"][None]
+        image = image[:, :, image.shape[2] // 2]
         image = torch.tensor(image).float().to(device)
         age = data["age"]
         sex = data["sex"]

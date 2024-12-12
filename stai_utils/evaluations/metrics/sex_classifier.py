@@ -1,6 +1,8 @@
+import os
 import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score
+from tqdm import tqdm
 
 from stai_utils.evaluations.models.unet3d.model import UNet3D
 from stai_utils.evaluations.models.finetune_model import FinetuneModel
@@ -18,21 +20,29 @@ def load_model(checkpoint_path, device):
 
 
 def evaluate_sex_classification(loader, args):
-    model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
+    cluster_name = os.getenv("CLUSTER_NAME")
+    if cluster_name == "haic":
+        model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
+    elif cluster_name == "sc":
+        model_checkpoint = "/simurgh/u/alanqw/models/sex_classifier/step_140000.pth"
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
+        )
+
     model = load_model(model_checkpoint, args.device)
 
     correct_sex = 0
     total_sex = 0
     result_list = []
     with torch.no_grad():
-        for i, batch in enumerate(loader):
-            print(f"Predicting sex... {i}/{len(loader)}")
-            images = batch["image"].to(args.device).float()
+        for _, batch in tqdm(
+            enumerate(loader), total=len(loader), desc="Predicting sex..."
+        ):
+            images = batch["vol_data"].to(args.device).float()
             sex_labels = batch["sex"].to(args.device)
             outputs = model(images)
             sex_preds = (torch.sigmoid(outputs) > 0.5).long()
-            print("sex_preds: ", sex_preds.shape)
-            print("sex_labels: ", sex_labels.shape)
 
             correct_sex += (sex_preds == sex_labels).sum().item()
             total_sex += sex_labels.size(0)
@@ -76,9 +86,9 @@ def evaluate_sex_classification_unet3dencoder(loader, args):
         outputs_list_val = []
         with torch.no_grad():
             for val_data in val_loader:
-                val_images, val_labels = val_data["image"].float().to(device), val_data[
-                    "sex"
-                ].float().to(device)
+                val_images, val_labels = val_data["vol_data"].float().to(
+                    device
+                ), val_data["sex"].float().to(device)
                 print(f"val_images shape: {val_images.shape}")
                 val_outputs = model(val_images)["pred_out"]
                 print(f"sex val_labels: {val_labels.shape}")
