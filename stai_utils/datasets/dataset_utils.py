@@ -2,7 +2,7 @@ import pickle
 import numpy as np
 import os
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 from monai.data import DataLoader
 from monai.transforms import (
@@ -142,6 +142,7 @@ class T1All:
         channel=0,
         spacing=(1.0, 1.0, 1.0),
         data_key="image",
+        sample_balanced_age_for_training=False,
     ):
         self.num_workers = num_workers
         self.zscore_age = zscore_age
@@ -150,6 +151,7 @@ class T1All:
         self.ddp_bool = world_size > 1
         assert channel in [0, 1, 2, 3], "Choose a valid channel"
         self.data_key = data_key
+        self.sample_balanced_age_for_training = sample_balanced_age_for_training
 
         self.age_mu = 0
         self.age_sigma = 1
@@ -237,15 +239,21 @@ class T1All:
             val_sampler = torch.utils.data.distributed.DistributedSampler(
                 val_ds, num_replicas=self.world_size, rank=self.rank
             )
+            shuffle = False
+        elif self.sample_balanced_age_for_training:
+            train_sampler = self.get_age_balanced_sampler(train_ages)
+            val_sampler = None
+            shuffle = False
         else:
             train_sampler = None
             val_sampler = None
+            shuffle = True
 
         print("shuffle for train: ", (not self.ddp_bool))
         train_loader = DataLoader(
             train_ds,
             batch_size=batch_size,
-            shuffle=(not self.ddp_bool),
+            shuffle=shuffle,
             num_workers=self.num_workers,
             pin_memory=False,
             sampler=train_sampler,
@@ -259,3 +267,23 @@ class T1All:
             sampler=val_sampler,
         )
         return train_loader, val_loader
+
+    def get_age_balanced_sampler(self, ages):
+        # Assuming condition_list holds age information
+        age_groups = [age // 10 for age in ages]
+        unique_groups, group_counts = np.unique(age_groups, return_counts=True)
+        group_weights = {
+            group: 1.0 / count for group, count in zip(unique_groups, group_counts)
+        }
+        print("GROUP WEIGHTS", group_weights)
+
+        # Assign weight to each sample based on its age group
+        sample_weights = [group_weights[age_group] for age_group in age_groups]
+
+        # Define a sampler using the sample weights
+        sampler = WeightedRandomSampler(
+            sample_weights, num_samples=len(sample_weights), replacement=True
+        )
+
+        # Return a DataLoader with the balanced sampler
+        return sampler
