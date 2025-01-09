@@ -75,7 +75,7 @@ def run_synthseg(input_dir, output_dir, skip_existing=True):
     return failed
 
 
-def get_frequency_dict_in_dir(directory):
+def get_frequency_dict_in_dir(directory, cap=None):
     """
     Processes all .npz files in a directory and computes the frequency
     dictionary for the numpy array with the key 'vol_data' inside them.
@@ -88,8 +88,16 @@ def get_frequency_dict_in_dir(directory):
     """
     results = {}
 
-    for filename in tqdm(os.listdir(directory), desc="Getting frequency"):
+    count = 0
+    for filename in tqdm(
+        os.listdir(directory),
+        desc="Getting frequency",
+        total=cap if cap is not None else len(os.listdir(directory)),
+    ):
         if filename.endswith(".npz"):
+            count += 1
+            if cap is not None and count > cap:
+                break
             file_path = os.path.join(directory, filename)
             # Load the .npz file
             with np.load(file_path) as data:
@@ -101,6 +109,9 @@ def get_frequency_dict_in_dir(directory):
 
                 # Compute the frequency dictionary
                 frequency_dict = get_frequency_dict(array)
+                frequency_dict = {
+                    int(key): value for key, value in frequency_dict.items()
+                }
 
                 # Append result as a dictionary
                 results[filename] = frequency_dict
@@ -119,4 +130,6 @@ def get_frequency_dict(array):
         dict: A dictionary with unique integers as keys and their frequencies as values.
     """
     unique_values, frequencies = np.unique(array, return_counts=True)
+    unique_values = unique_values.tolist()
+    frequencies = frequencies.tolist()
     return dict(zip(unique_values, frequencies))
