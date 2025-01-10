@@ -20,7 +20,7 @@ from monai.transforms import (
 )
 
 
-def get_t1_all_file_list():
+def get_t1_all_file_list_bwm():
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
@@ -34,12 +34,13 @@ def get_t1_all_file_list():
         )
 
     dataset_names = [
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/abcd/paths_and_info_flexpath.pkl",
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/adni_t1/paths_and_info_flexpath.pkl",
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/hcp_ag_t1/paths_and_info_flexpath.pkl",
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/hcp_dev_t1/paths_and_info_flexpath.pkl",
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/hcp_ya_mpr1/paths_and_info_flexpath.pkl",
-        f"{prefix}/monai-tutorials/generative/3d_ldm/metadata/ppmi_t1/paths_and_info_flexpath.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
     ]
     train_images = []
     train_ages = []
@@ -51,39 +52,26 @@ def get_t1_all_file_list():
     for dataset_name in dataset_names:
         with open(dataset_name, "rb") as file:
             data = pickle.load(file)
+            print(dataset_name)
+            print(data["train"].keys())
+            # for key in data['train'].keys():
+            #     print(f'\n{key}')
+            #     print(data['train'][key])
+
+            age_key = "ages" if "ages" in data["train"].keys() else "age"
+            sex_key = "sexes" if "sexes" in data["train"].keys() else "sex"
 
             # Convert paths and ages to lists if they are NumPy arrays
-            train_new_images = (
-                data["train"]["paths"].tolist()
-                if isinstance(data["train"]["paths"], np.ndarray)
-                else data["train"]["paths"]
-            )
-            train_new_ages = (
-                data["train"]["age"].tolist()
-                if isinstance(data["train"]["age"], np.ndarray)
-                else data["train"]["age"]
-            )
-            train_new_sex = (
-                data["train"]["sex"].tolist()
-                if isinstance(data["train"]["sex"], np.ndarray)
-                else data["train"]["sex"]
-            )
+            train_new_images = data["train"]["paths"].tolist()
+            train_new_ages = data["train"][age_key].tolist()
+            train_new_sex = data["train"][sex_key].tolist()
 
-            val_new_images = (
-                data["val"]["paths"].tolist()
-                if isinstance(data["val"]["paths"], np.ndarray)
-                else data["val"]["paths"]
-            )
-            val_new_ages = (
-                data["val"]["age"].tolist()
-                if isinstance(data["val"]["age"], np.ndarray)
-                else data["val"]["age"]
-            )
-            val_new_sex = (
-                data["val"]["sex"].tolist()
-                if isinstance(data["val"]["sex"], np.ndarray)
-                else data["val"]["sex"]
-            )
+            val_new_images = data["val"]["paths"].tolist()
+            val_new_ages = data["val"][age_key].tolist()
+            val_new_sex = data["val"][sex_key].tolist()
+
+            print(len(train_new_images), len(train_new_ages), len(train_new_sex))
+            print(len(val_new_images), len(val_new_ages), len(val_new_sex))
 
             train_images += train_new_images
             train_ages += train_new_ages
@@ -98,6 +86,7 @@ def get_t1_all_file_list():
 
     print(len(train_images))
     print(len(val_images))
+    print(len(train_images) + len(val_images))
 
     return train_images, train_ages, train_sexes, val_images, val_ages, val_sexes
 
@@ -202,7 +191,7 @@ class T1All:
         batch_size,
     ):
         train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
-            get_t1_all_file_list()
+            get_t1_all_file_list_bwm()
         )
 
         train_ages = np.array(train_ages)
@@ -286,3 +275,24 @@ class T1All:
 
         # Return a DataLoader with the balanced sampler
         return sampler
+
+
+if __name__ == "__main__":
+    dataset = T1All(
+        img_size=(128, 128, 128),
+        num_workers=4,
+        zscore_age=True,
+        rank=0,
+        world_size=1,
+        channel=0,
+        spacing=(1.0, 1.0, 1.0),
+        data_key="image",
+        sample_balanced_age_for_training=False,
+    )
+    train_loader, val_loader = dataset.get_dataloaders(batch_size=4)
+    for data in train_loader:
+        print(data)
+        break
+    for data in val_loader:
+        print(data)
+        break
