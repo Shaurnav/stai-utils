@@ -2,6 +2,7 @@ import pickle
 import numpy as np
 import os
 import torch
+import math
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 from monai.data import DataLoader
@@ -19,21 +20,92 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
 )
 
+MODALITY_MAP = {"t1": 0.0, "t2": 1.0}
 
-def get_t1_all_file_list_bwm():
+
+def perform_data_qc(l):
+    """Throws out data if sex is not 0/1 or if age is NaN (or invalid numeric).
+    Ignores 'OTHER' for 's' (sex)."""
+
+    def safe_convert_to_float(x):
+        """
+        Attempts to convert x to float.
+        If x is a string, we strip whitespace first.
+        Raise ValueError if it's 'OTHER' or otherwise invalid.
+        """
+        # If it's a string, strip whitespace
+        if isinstance(x, str):
+            x = x.strip()
+            # Handle special placeholder
+            if x == "OTHER":
+                raise ValueError("Encountered 'OTHER'.")
+
+        return float(x)  # Will raise ValueError/TypeError if not convertible
+
+    qc = []
+    for p, a, s, m in l:
+        try:
+            a_val = safe_convert_to_float(a)
+            s_val = safe_convert_to_float(s)
+            m_val = safe_convert_to_float(m)
+        except (ValueError, TypeError):
+            # If a, s, or m are "OTHER" or can't be converted
+            print(f"Skipping invalid row: (p={p}, a={a}, s={s}, m={m})")
+            continue
+
+        # Check for NaN
+        if math.isnan(a_val) or math.isnan(s_val):
+            print(f"Found NaN in row: (p={p}, a={a}, s={s}, m={m})")
+            continue
+
+        # If all checks pass, add it
+        qc.append((p, a_val, s_val, m_val))
+
+    return qc
+
+
+def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
+    """Returns file list for data in BWM Sherlock directory."""
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
-        prefix = "/simurgh/u/fangruih"
-        file_dir_prefix = "/simurgh/u/alanqw/data/fangruih/stru/"
-    elif cluster_name == "haic":
-        prefix = "/hai/scratch/fangruih"
-        file_dir_prefix = "/hai/scratch/fangruih/data/"
+        PREFIX_MAP = {
+            "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+            "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
+            "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+            #####
+            "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
+            "proc/t2/abcd_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/abcd/",
+            "proc/t2/hcp_ag_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/hcp_ag/",
+            "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
+        }
+    # elif cluster_name == "haic":
+    # elif cluster_name == "sherlock":
     else:
         raise ValueError(
             f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
         )
 
-    dataset_names = [
+    def fix_paths(old_paths):
+        new_paths = []
+        for path in old_paths:
+            # Find the prefix that matches the path
+            old_prefix = [p for p in tuple(PREFIX_MAP.keys()) if path.startswith(p)]
+            if len(old_prefix) == 0:
+                raise ValueError("No match found for path:", path)
+            elif len(old_prefix) == 1:
+                old_prefix = old_prefix[0]
+            else:
+                raise ValueError("Multiple matches found for path:", path)
+
+            new_prefix = PREFIX_MAP[old_prefix]
+            updated_path = path.replace(old_prefix, new_prefix, 1)
+            new_paths.append(updated_path)
+        return new_paths
+
+    if isinstance(modality, str):
+        modality = [modality]
+
+    t1_dataset_names = [
         "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
         "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
         "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
@@ -42,53 +114,100 @@ def get_t1_all_file_list_bwm():
         "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
         "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
     ]
-    train_images = []
+    t2_dataset_names = [
+        "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
+        "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
+        # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
+    ]
+    train_paths = []
     train_ages = []
     train_sexes = []
-    val_images = []
+    train_modalities = []
+    val_paths = []
     val_ages = []
     val_sexes = []
+    val_modalities = []
 
-    for dataset_name in dataset_names:
-        with open(dataset_name, "rb") as file:
-            data = pickle.load(file)
-            print(dataset_name)
-            print(data["train"].keys())
-            # for key in data['train'].keys():
-            #     print(f'\n{key}')
-            #     print(data['train'][key])
+    for m in modality:
+        if m == "t1":
+            dataset_names = t1_dataset_names
+        elif m == "t2":
+            dataset_names = t2_dataset_names
+        else:
+            raise ValueError(f"Unknown modality: {m}")
+        for dataset_name in dataset_names:
+            with open(dataset_name, "rb") as file:
+                data = pickle.load(file)
 
-            age_key = "ages" if "ages" in data["train"].keys() else "age"
-            sex_key = "sexes" if "sexes" in data["train"].keys() else "sex"
+                age_key = "ages" if "ages" in data["train"].keys() else "age"
+                sex_key = "sexes" if "sexes" in data["train"].keys() else "sex"
 
-            # Convert paths and ages to lists if they are NumPy arrays
-            train_new_images = data["train"]["paths"].tolist()
-            train_new_ages = data["train"][age_key].tolist()
-            train_new_sex = data["train"][sex_key].tolist()
+                # Convert paths and ages to lists if they are NumPy arrays
+                dataset_train_paths = data["train"]["paths"].tolist()
+                dataset_train_ages = data["train"][age_key].tolist()
+                dataset_train_sexes = data["train"][sex_key].tolist()
 
-            val_new_images = data["val"]["paths"].tolist()
-            val_new_ages = data["val"][age_key].tolist()
-            val_new_sex = data["val"][sex_key].tolist()
+                dataset_val_paths = data["val"]["paths"].tolist()
+                dataset_val_ages = data["val"][age_key].tolist()
+                dataset_val_sexes = data["val"][sex_key].tolist()
 
-            print(len(train_new_images), len(train_new_ages), len(train_new_sex))
-            print(len(val_new_images), len(val_new_ages), len(val_new_sex))
+                assert (
+                    len(dataset_train_paths)
+                    == len(dataset_train_ages)
+                    == len(dataset_train_sexes)
+                )
+                assert (
+                    len(dataset_val_paths)
+                    == len(dataset_val_ages)
+                    == len(dataset_val_sexes)
+                )
+                if verbose:
+                    print("Dataset:", dataset_name)
+                    print("Keys:", data["train"].keys())
+                    # for key in data['train'].keys():
+                    #     print(f'\n{key}')
+                    #     print(data['train'][key])
+                    print(f"-> Num train: {len(dataset_train_paths)}")
+                    print(f"-> Num val: {len(dataset_val_paths)}")
 
-            train_images += train_new_images
-            train_ages += train_new_ages
-            train_sexes += train_new_sex
+                train_paths += dataset_train_paths
+                train_ages += dataset_train_ages
+                train_sexes += dataset_train_sexes
+                train_modalities += [MODALITY_MAP[m]] * len(dataset_train_paths)
 
-            val_images += val_new_images
-            val_ages += val_new_ages
-            val_sexes += val_new_sex
+                val_paths += dataset_val_paths
+                val_ages += dataset_val_ages
+                val_sexes += dataset_val_sexes
+                val_modalities += [MODALITY_MAP[m]] * len(dataset_val_paths)
 
-    train_images = [file_dir_prefix + train_image for train_image in train_images]
-    val_images = [file_dir_prefix + val_image for val_image in val_images]
+        train_paths = fix_paths(train_paths)
+        val_paths = fix_paths(val_paths)
 
-    print(len(train_images))
-    print(len(val_images))
-    print(len(train_images) + len(val_images))
+    assert (
+        len(train_paths) == len(train_ages) == len(train_sexes) == len(train_modalities)
+    )
+    assert len(val_paths) == len(val_ages) == len(val_sexes) == len(val_modalities)
 
-    return train_images, train_ages, train_sexes, val_images, val_ages, val_sexes
+    train_data = list(zip(train_paths, train_ages, train_sexes, train_modalities))
+    val_data = list(zip(val_paths, val_ages, val_sexes, val_modalities))
+
+    if verbose:
+        print("\nTotal number of train paths before QC: ", len(train_data))
+        print("Total number of val paths before QC: ", len(val_data))
+        print("Total number of images before QC: ", len(train_data) + len(val_data))
+
+    train_data = perform_data_qc(train_data)
+    val_data = perform_data_qc(val_data)
+
+    if verbose:
+        print("\nTotal number of train paths after QC: ", len(train_data))
+        print("Total number of val paths after QC: ", len(val_data))
+        print("Total number of images after QC: ", len(train_data) + len(val_data))
+
+    return train_data, val_data
 
 
 class FileListDataset(Dataset):
@@ -117,10 +236,11 @@ class FileListDataset(Dataset):
         condition_tensor = self.condition_list[idx]
         data["age"] = condition_tensor[0]
         data["sex"] = condition_tensor[1]
+        data["modality"] = condition_tensor[2]
         return data
 
 
-class T1All:
+class BWMSherlock:
     def __init__(
         self,
         img_size,
@@ -128,7 +248,6 @@ class T1All:
         zscore_age=False,
         rank=0,
         world_size=1,
-        channel=0,
         spacing=(1.0, 1.0, 1.0),
         data_key="image",
         sample_balanced_age_for_training=False,
@@ -138,7 +257,6 @@ class T1All:
         self.rank = rank
         self.world_size = world_size
         self.ddp_bool = world_size > 1
-        assert channel in [0, 1, 2, 3], "Choose a valid channel"
         self.data_key = data_key
         self.sample_balanced_age_for_training = sample_balanced_age_for_training
 
@@ -149,7 +267,7 @@ class T1All:
             [
                 LoadImaged(keys=[data_key]),
                 EnsureChannelFirstd(keys=[data_key]),
-                Lambdad(keys=data_key, func=lambda x: x[channel, :, :, :]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
                 EnsureChannelFirstd(keys=[data_key], channel_dim=0),
                 EnsureTyped(keys=[data_key]),
                 Orientationd(keys=[data_key], axcodes="RAS"),
@@ -157,7 +275,7 @@ class T1All:
                 ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
                 # train_crop_transform,
                 ScaleIntensityRangePercentilesd(
-                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=100, b_min=0, b_max=1
                 ),
                 EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
@@ -166,7 +284,7 @@ class T1All:
             [
                 LoadImaged(keys=[data_key]),
                 EnsureChannelFirstd(keys=[data_key]),
-                Lambdad(keys=data_key, func=lambda x: x[channel, :, :, :]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
                 EnsureChannelFirstd(keys=[data_key], channel_dim=0),
                 EnsureTyped(keys=[data_key]),
                 Orientationd(keys=[data_key], axcodes="RAS"),
@@ -190,32 +308,37 @@ class T1All:
         self,
         batch_size,
     ):
-        train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
-            get_t1_all_file_list_bwm()
-        )
+        train_data, val_data = get_all_file_list_bwm_sherlock()
+
+        train_paths, train_ages, train_sexes, train_modalities = zip(*train_data)
+        val_paths, val_ages, val_sexes, val_modalities = zip(*val_data)
 
         train_ages = np.array(train_ages)
         val_ages = np.array(val_ages)
         if self.zscore_age:
             # Z-score normalization for age
-            self.age_mu = train_ages.mean()
-            self.age_sigma = train_ages.std()
+            self.age_mu = np.mean(train_ages)
+            self.age_sigma = np.std(train_ages)
             train_ages = self.zscore_normalize_age(train_ages)
             val_ages = self.zscore_normalize_age(val_ages)
 
         # Zip the conditions into one single list
-        train_conditions = [(a, b) for a, b in zip(train_ages, train_sexes)]
-        val_conditions = [(a, b) for a, b in zip(val_ages, val_sexes)]
+        train_conditions = [
+            (a, b, c) for a, b, c in zip(train_ages, train_sexes, train_modalities)
+        ]
+        val_conditions = [
+            (a, b, c) for a, b, c in zip(val_ages, val_sexes, val_modalities)
+        ]
 
         train_ds = FileListDataset(
-            train_images,
+            train_paths,
             condition_list=train_conditions,
             transform=self.train_transforms,
             data_key=self.data_key,
         )
 
         val_ds = FileListDataset(
-            val_images,
+            val_paths,
             condition_list=val_conditions,
             transform=self.val_transforms,
             data_key=self.data_key,
@@ -278,21 +401,27 @@ class T1All:
 
 
 if __name__ == "__main__":
-    dataset = T1All(
+    dataset = BWMSherlock(
         img_size=(128, 128, 128),
         num_workers=4,
         zscore_age=True,
         rank=0,
         world_size=1,
-        channel=0,
         spacing=(1.0, 1.0, 1.0),
         data_key="image",
         sample_balanced_age_for_training=False,
     )
+
+    import matplotlib.pyplot as plt
+
     train_loader, val_loader = dataset.get_dataloaders(batch_size=4)
     for data in train_loader:
         print(data)
+        plt.imshow(data["image"][0, 0, 80, :, :])
+        plt.show()
         break
     for data in val_loader:
         print(data)
+        plt.imshow(data["image"][0, 0, 80, :, :])
+        plt.show()
         break

@@ -10,14 +10,11 @@ def shell_command(command):
 
 
 def get_all_file_paths(directory):
-    # List to store file paths
     file_paths = []
-
-    # Walk through the directory
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            file_paths.append(os.path.join(root, file))
-
+    for entry in os.listdir(directory):
+        full_path = os.path.join(directory, entry)
+        if os.path.isfile(full_path):
+            file_paths.append(full_path)
     return file_paths
 
 

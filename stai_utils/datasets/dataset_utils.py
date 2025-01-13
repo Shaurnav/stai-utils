@@ -115,6 +115,11 @@ class FileListDataset(Dataset):
         self.condition_list = condition_list
         self.data_key = data_key
 
+        if self.condition_list is not None:
+            assert len(self.file_list) == len(
+                self.condition_list
+            ), "File list and condition list should have the same length."
+
     def __len__(self):
         return len(self.file_list)
 
@@ -125,9 +130,10 @@ class FileListDataset(Dataset):
         if self.transform:
             data = self.transform(data)
 
-        condition_tensor = self.condition_list[idx]
-        data["age"] = condition_tensor[0]
-        data["sex"] = condition_tensor[1]
+        if self.condition_list is not None:
+            condition_tensor = self.condition_list[idx]
+            data["age"] = condition_tensor[0]
+            data["sex"] = condition_tensor[1]
         return data
 
 
