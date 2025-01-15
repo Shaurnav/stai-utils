@@ -106,8 +106,8 @@ class FileListDataset(Dataset):
     def __init__(
         self,
         file_list,
+        transform,
         condition_list=None,
-        transform=None,
         data_key="image",
     ):
         self.file_list = file_list
@@ -206,6 +206,7 @@ class T1All:
     def get_dataloaders(
         self,
         batch_size,
+        drop_last=False,
     ):
         train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
             get_t1_all_file_list()
@@ -263,6 +264,7 @@ class T1All:
             num_workers=self.num_workers,
             pin_memory=False,
             sampler=train_sampler,
+            drop_last=drop_last,
         )
         val_loader = DataLoader(
             val_ds,
@@ -271,6 +273,7 @@ class T1All:
             num_workers=self.num_workers,
             pin_memory=False,
             sampler=val_sampler,
+            drop_last=drop_last,
         )
         return train_loader, val_loader
 
