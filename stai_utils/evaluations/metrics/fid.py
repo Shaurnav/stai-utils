@@ -5,7 +5,9 @@ from torchvision.models import resnet50
 from tqdm import tqdm
 
 from generative.metrics import FIDMetric
+from monai.data import DataLoader
 
+from stai_utils.datasets.dataset_utils import FileListDataset
 from stai_utils.evaluations.models.resnet import resnet10
 from stai_utils.evaluations.util import create_dataloader_from_dir
 
@@ -129,8 +131,8 @@ def _extract_imagenet_features_to_dir(
 
 
 def evaluate_fid_medicalnet3d(
-    real_img_loader,
-    fake_img_loader,
+    real_img_paths,
+    fake_img_paths,
     real_feat_dir,
     fake_feat_dir,
     device,
@@ -138,6 +140,30 @@ def evaluate_fid_medicalnet3d(
 ):
     # Load the medicalnet model
     medicalnet = _get_medicalnet_model().to(device)
+
+    # Build dataloader from paths
+    real_img_loader = DataLoader(
+        FileListDataset(
+            real_img_paths,
+            transform=None,
+            data_key="vol_data",
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+    fake_img_loader = DataLoader(
+        FileListDataset(
+            fake_img_paths,
+            transform=None,
+            data_key="vol_data",
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
 
     # Extract features from the real and fake samples
     print("Extracting medicalnet features...")
@@ -160,8 +186,8 @@ def evaluate_fid_medicalnet3d(
 
 
 def evaluate_fid_imagenet2d(
-    real_img_loader,
-    fake_img_loader,
+    real_img_paths,
+    fake_img_paths,
     real_feat_dir,
     fake_feat_dir,
     device,
@@ -169,6 +195,30 @@ def evaluate_fid_imagenet2d(
 ):
     # Load the imagenet model
     imagenet = _get_imagenet_model().to(device)
+
+    # Build dataloader from paths
+    real_img_loader = DataLoader(
+        FileListDataset(
+            real_img_paths,
+            transform=None,
+            data_key="vol_data",
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+    fake_img_loader = DataLoader(
+        FileListDataset(
+            fake_img_paths,
+            transform=None,
+            data_key="vol_data",
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
 
     # Extract features from the real and fake samples
     print("Extracting imagenet features...")

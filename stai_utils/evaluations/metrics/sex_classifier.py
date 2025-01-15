@@ -3,7 +3,24 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
+import numpy as np
 
+from monai.data import DataLoader, NumpyReader
+from monai.transforms import (
+    CenterSpatialCropd,
+    Compose,
+    EnsureChannelFirstd,
+    EnsureTyped,
+    Lambdad,
+    LoadImaged,
+    Orientationd,
+    RandSpatialCropd,
+    ScaleIntensityRangePercentilesd,
+    Spacingd,
+    ResizeWithPadOrCropd,
+)
+
+from stai_utils.datasets.dataset_utils import FileListDataset
 from stai_utils.evaluations.models.unet3d.model import UNet3D
 from stai_utils.evaluations.models.finetune_model import FinetuneModel
 from stai_utils.evaluations.models.resnet import resnet50
@@ -19,7 +36,16 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def evaluate_sex_classification(loader, args):
+class MyReader(NumpyReader):
+    def get_data(self, data):
+        img_data = data[0]
+        img, meta = super().get_data(img_data)
+        meta["age"] = data[1]
+        meta["sex"] = data[2]
+        return img, meta
+
+
+def evaluate_sex_classification(paths, args):
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "haic":
         model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
@@ -32,6 +58,43 @@ def evaluate_sex_classification(loader, args):
 
     model = load_model(model_checkpoint, args.device)
 
+    data_key = "vol_data"
+    spacing = (1, 1, 1)
+    img_size = (160, 192, 176)
+    val_transforms = Compose(
+        [
+            LoadImaged(
+                keys=[data_key],
+                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
+            ),
+            EnsureChannelFirstd(keys=[data_key]),
+            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+            EnsureTyped(keys=[data_key]),
+            Orientationd(keys=[data_key], axcodes="RAS"),
+            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+            ScaleIntensityRangePercentilesd(
+                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+            ),
+            EnsureTyped(keys=data_key, dtype=torch.float32),
+        ]
+    )
+
+    # Build dataloader from paths
+    loader = DataLoader(
+        FileListDataset(
+            paths,
+            transform=val_transforms,
+            data_key=data_key,
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+
     correct_sex = 0
     total_sex = 0
     result_list = []
@@ -40,7 +103,7 @@ def evaluate_sex_classification(loader, args):
             enumerate(loader), total=len(loader), desc="Predicting sex..."
         ):
             images = batch["vol_data"].to(args.device).float()
-            sex_labels = batch["sex"].to(args.device)
+            sex_labels = batch["vol_data"].meta["sex"].to(args.device)
             outputs = model(images)
             sex_preds = (torch.sigmoid(outputs) > 0.5).long()
 
