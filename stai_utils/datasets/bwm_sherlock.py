@@ -78,7 +78,51 @@ def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
             "proc/t2/hcp_ag_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/hcp_ag/",
             "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
         }
-    # elif cluster_name == "haic":
+        t1_dataset_names = [
+            "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
+        ]
+        t2_dataset_names = [
+            "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
+            "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
+            # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
+        ]
+    elif cluster_name == "haic":
+        PREFIX_MAP = {
+            # "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+            # "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
+            # "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+            #####
+            "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/",
+            "proc/t2/abcd_t2/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/abcd/",
+            "proc/t2/hcp_ag_t2/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/hcp_ag/",
+            "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/",
+        }
+        t1_dataset_names = [
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/abcd/paths_and_info_flexpath.pkl",
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/adni_t1/paths_and_info_flexpath.pkl",
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_ag_t1/paths_and_info_flexpath.pkl",
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_dev_t1/paths_and_info_flexpath.pkl",
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_ya_mpr1/paths_and_info_flexpath.pkl",
+            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/ppmi_t1/paths_and_info_flexpath.pkl",
+        ]
+        t2_dataset_names = [
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+            # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
+            # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
+        ]
     # elif cluster_name == "sherlock":
     else:
         raise ValueError(
@@ -91,37 +135,20 @@ def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
             # Find the prefix that matches the path
             old_prefix = [p for p in tuple(PREFIX_MAP.keys()) if path.startswith(p)]
             if len(old_prefix) == 0:
-                raise ValueError("No match found for path:", path)
+                new_paths.append(path)  # No match found, don't change the path
             elif len(old_prefix) == 1:
                 old_prefix = old_prefix[0]
+                new_prefix = PREFIX_MAP[old_prefix]
+                updated_path = path.replace(old_prefix, new_prefix, 1)
+                new_paths.append(updated_path)
             else:
                 raise ValueError("Multiple matches found for path:", path)
 
-            new_prefix = PREFIX_MAP[old_prefix]
-            updated_path = path.replace(old_prefix, new_prefix, 1)
-            new_paths.append(updated_path)
         return new_paths
 
     if isinstance(modality, str):
         modality = [modality]
 
-    t1_dataset_names = [
-        "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
-    ]
-    t2_dataset_names = [
-        "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-        "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
-        # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
-    ]
     train_paths = []
     train_ages = []
     train_sexes = []
@@ -182,6 +209,14 @@ def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
                 val_ages += dataset_val_ages
                 val_sexes += dataset_val_sexes
                 val_modalities += [MODALITY_MAP[m]] * len(dataset_val_paths)
+
+        if m == "t1":  # TODO: remove this
+            train_paths = [
+                "/hai/scratch/fangruih/data/" + train_path for train_path in train_paths
+            ]
+            val_paths = [
+                "/hai/scratch/fangruih/data/" + val_path for val_path in val_paths
+            ]
 
         train_paths = fix_paths(train_paths)
         val_paths = fix_paths(val_paths)
@@ -245,6 +280,7 @@ class BWMSherlock:
         self,
         img_size,
         num_workers,
+        modality=("t1", "t2"),
         zscore_age=False,
         rank=0,
         world_size=1,
@@ -253,6 +289,7 @@ class BWMSherlock:
         sample_balanced_age_for_training=False,
     ):
         self.num_workers = num_workers
+        self.modality = modality
         self.zscore_age = zscore_age
         self.rank = rank
         self.world_size = world_size
@@ -308,7 +345,7 @@ class BWMSherlock:
         self,
         batch_size,
     ):
-        train_data, val_data = get_all_file_list_bwm_sherlock()
+        train_data, val_data = get_all_file_list_bwm_sherlock(self.modality)
 
         train_paths, train_ages, train_sexes, train_modalities = zip(*train_data)
         val_paths, val_ages, val_sexes, val_modalities = zip(*val_data)
