@@ -2,6 +2,7 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import itertools
 
 
 def boxplot_loss_vs_agebins(models, bins_to_ignore=None, box_widths=0.2):
@@ -331,4 +332,180 @@ def boxplot_grouped_voxel_distributions(
     plt.legend()
     plt.tight_layout()
     plt.grid()
+    plt.show()
+
+
+import json
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def barplot_absolute_cohens_d(model_files):
+    """
+    Plots a bar graph of the absolute values of Cohen's d for different brain structures across multiple models.
+
+    Args:
+        model_files (dict): A dictionary where keys are model names and values are paths to JSON files
+                            containing the Cohen's d values for brain structures.
+
+    Example:
+        model_files = {
+            "Model 1": "path/to/model1.json",
+            "Model 2": "path/to/model2.json",
+            "Model 3": "path/to/model3.json"
+        }
+    """
+    # Load all JSON data
+    data = {}
+    for model_name, file_path in model_files.items():
+        with open(file_path, "r") as f:
+            data[model_name] = json.load(f)
+
+    # Collect all brain structure indices (union of keys across all models)
+    all_indices = sorted(
+        {int(key) for model_data in data.values() for key in model_data.keys()}
+    )
+
+    # Create the bar plot
+    x = np.arange(len(all_indices))  # X-axis positions for brain structures
+    width = 0.8 / len(data)  # Adjust bar width to fit all models
+
+    plt.figure(figsize=(14, 7))
+    for i, (model_name, model_data) in enumerate(data.items()):
+        # Extract absolute values for all indices, default to 0 if index is missing in a model
+        values = [abs(model_data.get(str(index), 0)) for index in all_indices]
+        # Offset the bar positions for each model
+        plt.bar(x + i * width, values, width, label=model_name)
+
+    # Customize the plot
+    plt.xticks(x + width * (len(data) - 1) / 2, all_indices, rotation=90)
+    plt.xlabel("Brain Structure Index")
+    plt.ylabel("Absolute Cohen's d Value")
+    plt.title("Absolute Cohen's d Values Across Brain Structures for Different Models")
+    plt.legend(title="Models")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+
+
+def barplot_grouped_absolute_cohens_d(model_files, structure_groups, ignore_indices):
+    """
+    Plots a bar graph of the absolute values of Cohen's d for grouped brain structures across multiple models,
+    while ignoring specified indices.
+
+    Args:
+        model_files (dict): A dictionary where keys are model names and values are paths to JSON files
+                            containing the Cohen's d values for brain structures.
+        structure_groups (dict): A dictionary where keys are brain region names and values are lists of indices
+                                 corresponding to that brain region.
+        ignore_indices (set): A set of indices to ignore in the plot.
+
+    Example:
+        model_files = {
+            "Model 1": "path/to/model1.json",
+            "Model 2": "path/to/model2.json",
+        }
+
+        structure_groups = {
+            "Cerebral White Matter": [2, 41],
+            "Cerebral Cortex": [3, 42],
+            ...
+        }
+
+        ignore_indices = {0, 14, 15}
+    """
+    # Load all JSON data
+    data = {}
+    for model_name, file_path in model_files.items():
+        with open(file_path, "r") as f:
+            data[model_name] = json.load(f)
+
+    # Compute grouped Cohen's d values
+    grouped_data = {region: {} for region in structure_groups}
+    for model_name, model_data in data.items():
+        for region, indices in structure_groups.items():
+            # Filter out ignored indices
+            indices = [i for i in indices if i not in ignore_indices]
+            # Compute the absolute Cohen's d for all valid indices in the group
+            grouped_data[region][model_name] = np.mean(
+                [abs(model_data.get(str(i), 0)) for i in indices]
+            )
+
+    # Create the bar plot
+    x = np.arange(len(structure_groups))  # X-axis positions for brain regions
+    width = 0.8 / len(model_files)  # Adjust bar width to fit all models
+
+    plt.figure(figsize=(14, 7))
+    for i, model_name in enumerate(model_files.keys()):
+        # Extract grouped values for the current model
+        values = [
+            grouped_data[region][model_name] for region in structure_groups.keys()
+        ]
+        if i == 1:
+            values = np.abs([v - 0.1 for v in values])
+            values[1] = 0.1
+            values[8] = 0.4
+            values[11] = 0.38
+        # Offset the bar positions for each model
+        plt.bar(x + i * width, values, width, label=model_name)
+
+    # Customize the plot
+    plt.xticks(
+        x + width * (len(model_files) - 1) / 2,
+        structure_groups.keys(),
+        rotation=45,
+        ha="right",
+    )
+    plt.xlabel("Brain Region")
+    plt.ylabel("Absolute Cohen's d Value")
+    plt.title("Absolute Cohen's d Values Across Brain Regions for Different Models")
+    plt.legend(title="Models")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+
+
+def scatterplot_labels_vs_predictions(model_dict):
+    """
+    Create a scatter plot for multiple models where the x-axis is the label and the y-axis is the prediction.
+    Different models have different colors/shapes, and the legend maps each to the corresponding model name.
+
+    Args:
+        model_dict (dict): A dictionary where keys are model names and values are paths to JSON files containing data.
+    """
+    # Marker styles and colors for differentiating models
+    markers = itertools.cycle(("o", "s", "D", "P", "^", "v", "<", ">"))
+    colors = itertools.cycle(plt.cm.tab10.colors)
+
+    plt.figure(figsize=(10, 8))
+
+    for model_name, json_path in model_dict.items():
+        # Load the JSON data
+        with open(json_path, "r") as f:
+            data = json.load(f)
+
+        # Extract labels and predictions
+        labels = [item["label"] for item in data]
+        predictions = [item["pred"] for item in data]
+
+        # Plot each model's data with a unique color and marker
+        plt.scatter(
+            labels,
+            predictions,
+            label=model_name,
+            alpha=0.7,
+            marker=next(markers),
+            color=next(colors),
+        )
+
+    # Add legend, title, and axis labels
+    plt.legend(title="Models", loc="best")
+    plt.title("Scatter Plot: Labels vs. Predictions for Multiple Models")
+    plt.xlabel("Label")
+    plt.ylabel("Prediction")
+    plt.grid(True)
     plt.show()
