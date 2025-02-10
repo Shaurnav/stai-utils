@@ -5,11 +5,34 @@ from torchvision.models import resnet50
 from tqdm import tqdm
 
 from generative.metrics import FIDMetric
-from monai.data import DataLoader
+from monai.data import DataLoader, NumpyReader
+from monai.transforms import (
+    CenterSpatialCropd,
+    Compose,
+    EnsureChannelFirstd,
+    EnsureTyped,
+    Lambdad,
+    LoadImaged,
+    Orientationd,
+    RandSpatialCropd,
+    ScaleIntensityRangePercentilesd,
+    Spacingd,
+    ResizeWithPadOrCropd,
+)
+
 
 from stai_utils.datasets.dataset_utils import FileListDataset
 from stai_utils.evaluations.models.resnet import resnet10
 from stai_utils.evaluations.util import create_dataloader_from_dir
+
+
+class MyReader(NumpyReader):
+    def get_data(self, data):
+        img_data = data[0]
+        img, meta = super().get_data(img_data)
+        meta["age"] = data[1]
+        meta["sex"] = data[2]
+        return img, meta
 
 
 def _get_medicalnet_model():
@@ -74,8 +97,8 @@ def _extract_medicalnet_features_to_dir(
         data = dataset[i]
         image = torch.tensor(data["vol_data"]).float().to(device)[None]
         image = __itensity_normalize_one_volume__(image)
-        age = data["age"]
-        sex = data["sex"]
+        age = data["vol_data"].meta["age"]
+        sex = data["vol_data"].meta["sex"]
         feat = feature_extractor(image)
 
         np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
@@ -123,8 +146,8 @@ def _extract_imagenet_features_to_dir(
         image = data["vol_data"][None]
         image = image[:, :, image.shape[2] // 2]
         image = torch.tensor(image).float().to(device)
-        age = data["age"]
-        sex = data["sex"]
+        age = data["vol_data"].meta["age"]
+        sex = data["vol_data"].meta["sex"]
         feat = _get_imagenet_features(image, feature_extractor)
 
         np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
@@ -141,12 +164,36 @@ def evaluate_fid_medicalnet3d(
     # Load the medicalnet model
     medicalnet = _get_medicalnet_model().to(device)
 
+    data_key = "vol_data"
+    spacing = (1, 1, 1)
+    img_size = (160, 192, 176)
+    val_transforms = Compose(
+        [
+            LoadImaged(
+                keys=[data_key],
+                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
+            ),
+            EnsureChannelFirstd(keys=[data_key]),
+            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+            EnsureTyped(keys=[data_key]),
+            Orientationd(keys=[data_key], axcodes="RAS"),
+            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+            ScaleIntensityRangePercentilesd(
+                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+            ),
+            EnsureTyped(keys=data_key, dtype=torch.float32),
+        ]
+    )
+
     # Build dataloader from paths
     real_img_loader = DataLoader(
         FileListDataset(
             real_img_paths,
-            transform=None,
-            data_key="vol_data",
+            transform=val_transforms,
+            data_key=data_key,
         ),
         batch_size=1,
         shuffle=False,
@@ -156,8 +203,8 @@ def evaluate_fid_medicalnet3d(
     fake_img_loader = DataLoader(
         FileListDataset(
             fake_img_paths,
-            transform=None,
-            data_key="vol_data",
+            transform=val_transforms,
+            data_key=data_key,
         ),
         batch_size=1,
         shuffle=False,
@@ -196,12 +243,36 @@ def evaluate_fid_imagenet2d(
     # Load the imagenet model
     imagenet = _get_imagenet_model().to(device)
 
+    data_key = "vol_data"
+    spacing = (1, 1, 1)
+    img_size = (160, 192, 176)
+    val_transforms = Compose(
+        [
+            LoadImaged(
+                keys=[data_key],
+                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
+            ),
+            EnsureChannelFirstd(keys=[data_key]),
+            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+            EnsureTyped(keys=[data_key]),
+            Orientationd(keys=[data_key], axcodes="RAS"),
+            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+            ScaleIntensityRangePercentilesd(
+                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+            ),
+            EnsureTyped(keys=data_key, dtype=torch.float32),
+        ]
+    )
+
     # Build dataloader from paths
     real_img_loader = DataLoader(
         FileListDataset(
             real_img_paths,
-            transform=None,
-            data_key="vol_data",
+            transform=val_transforms,
+            data_key=data_key,
         ),
         batch_size=1,
         shuffle=False,
@@ -211,7 +282,7 @@ def evaluate_fid_imagenet2d(
     fake_img_loader = DataLoader(
         FileListDataset(
             fake_img_paths,
-            transform=None,
+            transform=val_transforms,
             data_key="vol_data",
         ),
         batch_size=1,
