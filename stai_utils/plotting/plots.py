@@ -443,11 +443,6 @@ def barplot_grouped_absolute_cohens_d(model_files, structure_groups, ignore_indi
         values = [
             grouped_data[region][model_name] for region in structure_groups.keys()
         ]
-        # if i == 1:
-        #     values = np.abs([v - 0.1 for v in values])
-        #     values[1] = 0.1
-        #     values[8] = 0.4
-        #     values[11] = 0.38
         # Offset the bar positions for each model
         plt.bar(x + i * width, values, width, label=model_name)
 
