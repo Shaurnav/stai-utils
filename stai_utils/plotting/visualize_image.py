@@ -12,6 +12,8 @@
 import numpy as np
 from monai.utils.type_conversion import convert_to_numpy
 
+import matplotlib.pyplot as plt
+
 
 def normalize_image_to_uint8(image):
     """
@@ -69,3 +71,24 @@ def visualize_one_slice_in_3d_image_greyscale(image, axis: int = 2):
     # draw_img = np.stack([draw_img, draw_img, draw_img], axis=-1)
     # array[..., np.newaxis]
     return draw_img[..., np.newaxis]
+
+
+def plot_latent(z, title=None):
+    # Create subplots
+    fig, axes = plt.subplots(2, 4, figsize=(14, 7))  # 2 rows, 4 columns
+
+    # Iterate through the 8 channels
+    for i, ax in enumerate(axes.flat):
+        im = ax.imshow(z[0, i, 20], cmap="gray")  # Display the channel
+        ax.set_title(f"Channel {i+1}")
+        ax.axis("off")  # Hide axes for a cleaner look
+
+        # Add colorbar next to each subplot
+        cbar = fig.colorbar(
+            im, ax=ax, fraction=0.046, pad=0.04
+        )  # Adjust size & spacing
+
+    if title:
+        plt.suptitle(title, fontsize=20)
+    plt.tight_layout()
+    plt.show()

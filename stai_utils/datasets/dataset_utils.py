@@ -20,7 +20,7 @@ from monai.transforms import (
 )
 
 
-def get_t1_all_file_list():
+def get_t1_all_file_list(debug=False):
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
@@ -98,6 +98,17 @@ def get_t1_all_file_list():
 
     print(len(train_images))
     print(len(val_images))
+
+    if debug:
+        print(
+            "WARNING: Debug mode is on. Only using one sample for training and validation."
+        )
+        train_images = train_images[:1]
+        train_ages = train_ages[:1]
+        train_sexes = train_sexes[:1]
+        val_images = train_images
+        val_ages = train_ages
+        val_sexes = train_sexes
 
     return train_images, train_ages, train_sexes, val_images, val_ages, val_sexes
 
@@ -203,13 +214,9 @@ class T1All:
     def zscore_unnormalize_age(self, age):
         return age * self.age_sigma + self.age_mu
 
-    def get_dataloaders(
-        self,
-        batch_size,
-        drop_last=False,
-    ):
+    def get_dataloaders(self, batch_size, drop_last=False, debug_one_sample=False):
         train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
-            get_t1_all_file_list()
+            get_t1_all_file_list(debug=debug_one_sample)
         )
 
         train_ages = np.array(train_ages)
