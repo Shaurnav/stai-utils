@@ -27,7 +27,8 @@ def get_t1_all_file_list(debug=False):
         file_dir_prefix = "/simurgh/u/alanqw/data/fangruih/stru/"
     elif cluster_name == "haic":
         prefix = "/hai/scratch/fangruih"
-        file_dir_prefix = "/hai/scratch/fangruih/data/"
+        # file_dir_prefix = "/hai/scratch/fangruih/data/"
+        file_dir_prefix = "/scr/alanqw/"
     else:
         raise ValueError(
             f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
@@ -153,7 +154,7 @@ class T1All:
         self,
         img_size,
         num_workers,
-        zscore_age=False,
+        age_normalization=None,
         rank=0,
         world_size=1,
         channel=0,
@@ -162,7 +163,12 @@ class T1All:
         sample_balanced_age_for_training=False,
     ):
         self.num_workers = num_workers
-        self.zscore_age = zscore_age
+        assert age_normalization in [
+            None,
+            "zscore",
+            "min-max",
+        ], "Choose a valid age normalization method"
+        self.age_normalization = age_normalization
         self.rank = rank
         self.world_size = world_size
         self.ddp_bool = world_size > 1
@@ -208,11 +214,28 @@ class T1All:
             ]
         )
 
-    def zscore_normalize_age(self, age):
-        return (age - self.age_mu) / (self.age_sigma + 1e-8)
+    @staticmethod
+    def _zscore_normalize(x, mu, sigma):
+        return (x - mu) / (sigma + 1e-8)
 
-    def zscore_unnormalize_age(self, age):
-        return age * self.age_sigma + self.age_mu
+    @staticmethod
+    def _inverse_zscore_normalize(x, mu, sigma):
+        return x * sigma + mu
+
+    @staticmethod
+    def _min_max_scale(x, min_val, max_val):
+        return (x - min_val) / (max_val - min_val)
+
+    @staticmethod
+    def _inverse_min_max_scale(x, min_val, max_val):
+        return x * (max_val - min_val) + min_val
+
+    def normalize_age(self, ages):
+        if self.age_normalization == "zscore":
+            ages = self._zscore_normalize(ages, self.age_mu, self.age_sigma)
+        elif self.age_normalization == "min-max":
+            ages = self._min_max_scale(ages, self.age_min, self.age_max)
+        return ages
 
     def get_dataloaders(self, batch_size, drop_last=False, debug_one_sample=False):
         train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
@@ -221,12 +244,17 @@ class T1All:
 
         train_ages = np.array(train_ages)
         val_ages = np.array(val_ages)
-        if self.zscore_age:
+        if self.age_normalization == "zscore":
             # Z-score normalization for age
             self.age_mu = train_ages.mean()
             self.age_sigma = train_ages.std()
-            train_ages = self.zscore_normalize_age(train_ages)
-            val_ages = self.zscore_normalize_age(val_ages)
+            train_ages = self._zscore_normalize(train_ages, self.age_mu, self.age_sigma)
+            val_ages = self._zscore_normalize(val_ages, self.age_mu, self.age_sigma)
+        elif self.age_normalization == "min-max":
+            self.age_min = train_ages.min()
+            self.age_max = train_ages.max()
+            train_ages = self._min_max_scale(train_ages, self.age_min, self.age_max)
+            val_ages = self._min_max_scale(val_ages, self.age_min, self.age_max)
 
         # Zip the conditions into one single list
         train_conditions = [(a, b) for a, b in zip(train_ages, train_sexes)]
@@ -284,21 +312,59 @@ class T1All:
         )
         return train_loader, val_loader
 
-    def get_age_balanced_sampler(self, ages):
-        # Assuming condition_list holds age information
-        age_groups = [age // 10 for age in ages]
-        unique_groups, group_counts = np.unique(age_groups, return_counts=True)
-        group_weights = {
-            group: 1.0 / count for group, count in zip(unique_groups, group_counts)
-        }
+    def get_age_balanced_sampler(self, ages, num_bins=10):
+        """
+        Create a weighted sampler that balances samples across age bins,
+        agnostic to the units of the age values (e.g., years, normalized, etc.).
 
-        # Assign weight to each sample based on its age group
-        sample_weights = [group_weights[age_group] for age_group in age_groups]
+        Parameters:
+            ages (iterable): A list or array of age values.
+            num_bins (int): The number of bins to use for balancing. Default is 10.
 
-        # Define a sampler using the sample weights
+        Returns:
+            WeightedRandomSampler: A sampler that samples items inversely
+                                proportional to the frequency of their age bin.
+        """
+        ages = np.array(ages)
+        print("Input ages:", ages)
+
+        # Handle the edge case where all ages are nearly identical.
+        if np.allclose(ages.min(), ages.max()):
+            print(
+                "All ages are approximately equal. Assigning equal weights to all samples."
+            )
+            sample_weights = np.ones_like(ages, dtype=float)
+        else:
+            print(f"Age range: min = {ages.min()}, max = {ages.max()}")
+            # Create bins that span the range of the age values.
+            bins = np.linspace(ages.min(), ages.max(), num_bins + 1)
+            print("Computed bins:", bins)
+
+            # Determine bin indices for each age.
+            # Adjusting the index so that each age falls into a bin between 0 and (num_bins - 1)
+            bin_indices = np.searchsorted(bins, ages, side="right") - 1
+            print("Assigned bin indices:", bin_indices)
+
+            # Compute the count of samples in each bin.
+            unique_bins, counts = np.unique(bin_indices, return_counts=True)
+            print("Unique bins and their counts:")
+            for bin_val, count in zip(unique_bins, counts):
+                print(f"  Bin {bin_val}: {count} sample(s)")
+
+            # Compute weights for each bin as the inverse of the count.
+            bin_weights = {
+                bin_idx: 1.0 / count for bin_idx, count in zip(unique_bins, counts)
+            }
+            print("Calculated bin weights (inverse frequency):", bin_weights)
+
+            # Map each sample to the weight corresponding to its bin.
+            sample_weights = [bin_weights[idx] for idx in bin_indices]
+            print("Final sample weights:", sample_weights)
+
+        # Create the weighted random sampler.
         sampler = WeightedRandomSampler(
             sample_weights, num_samples=len(sample_weights), replacement=True
         )
+        print(f"Created WeightedRandomSampler with {len(sample_weights)} samples.")
 
-        # Return a DataLoader with the balanced sampler
         return sampler
