@@ -20,15 +20,17 @@ from monai.transforms import (
 )
 
 
-def get_t1_all_file_list(debug=False):
+def get_t1_all_file_list(read_from_scr=True, debug=False):
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         prefix = "/simurgh/u/fangruih"
         file_dir_prefix = "/simurgh/u/alanqw/data/fangruih/stru/"
     elif cluster_name == "haic":
         prefix = "/hai/scratch/fangruih"
-        # file_dir_prefix = "/hai/scratch/fangruih/data/"
-        file_dir_prefix = "/scr/alanqw/"
+        if read_from_scr:
+            file_dir_prefix = "/scr/alanqw/"
+        else:
+            file_dir_prefix = "/hai/scratch/fangruih/data/"
     else:
         raise ValueError(
             f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
@@ -154,6 +156,7 @@ class T1All:
         self,
         img_size,
         num_workers,
+        read_from_scr=True,
         age_normalization=None,
         rank=0,
         world_size=1,
@@ -175,6 +178,7 @@ class T1All:
         assert channel in [0, 1, 2, 3], "Choose a valid channel"
         self.data_key = data_key
         self.sample_balanced_age_for_training = sample_balanced_age_for_training
+        self.read_from_scr = read_from_scr
 
         self.age_mu = 0
         self.age_sigma = 1
@@ -239,7 +243,9 @@ class T1All:
 
     def get_dataloaders(self, batch_size, drop_last=False, debug_one_sample=False):
         train_images, train_ages, train_sexes, val_images, val_ages, val_sexes = (
-            get_t1_all_file_list(debug=debug_one_sample)
+            get_t1_all_file_list(
+                read_from_scr=self.read_from_scr, debug=debug_one_sample
+            )
         )
 
         train_ages = np.array(train_ages)
