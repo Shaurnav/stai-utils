@@ -26,12 +26,22 @@ from stai_utils.evaluations.models.finetune_model import FinetuneModel
 from stai_utils.evaluations.models.resnet import resnet50
 
 
-def load_model(checkpoint_path, device):
-    model = resnet50(shortcut_type="B").to(device)
+def get_sexclassifier_model():
+    cluster_name = os.getenv("CLUSTER_NAME")
+    if cluster_name == "haic":
+        model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
+    elif cluster_name == "sc":
+        model_checkpoint = "/simurgh/u/alanqw/models/sex_classifier/step_140000.pth"
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
+        )
+
+    model = resnet50(shortcut_type="B")
     model.conv_seg = nn.Sequential(
         nn.AdaptiveAvgPool3d((1, 1, 1)), nn.Flatten(), nn.Linear(2048, 1)
-    ).to(device)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    )
+    model.load_state_dict(torch.load(model_checkpoint, map_location="cpu"))
     model.eval()
     return model
 
@@ -45,42 +55,46 @@ class MyReader(NumpyReader):
         return img, meta
 
 
-def evaluate_sex_classification(paths, args):
-    cluster_name = os.getenv("CLUSTER_NAME")
-    if cluster_name == "haic":
-        model_checkpoint = "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/condition_predictor/condition_predictor_ckpt/20241117_174033/step_140000.pth"
-    elif cluster_name == "sc":
-        model_checkpoint = "/simurgh/u/alanqw/models/sex_classifier/step_140000.pth"
-    else:
-        raise ValueError(
-            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
-        )
-
-    model = load_model(model_checkpoint, args.device)
+def evaluate_sex_classification(paths, args, apply_val_transforms=False):
+    model = get_sexclassifier_model().to(args.device)
 
     data_key = "vol_data"
     spacing = (1, 1, 1)
     img_size = (160, 192, 176)
-    val_transforms = Compose(
-        [
-            LoadImaged(
-                keys=[data_key],
-                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
-            ),
-            EnsureChannelFirstd(keys=[data_key]),
-            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-            EnsureTyped(keys=[data_key]),
-            Orientationd(keys=[data_key], axcodes="RAS"),
-            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
-            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
-            ScaleIntensityRangePercentilesd(
-                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys=data_key, dtype=torch.float32),
-        ]
-    )
+    if apply_val_transforms:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
+            ]
+        )
+    else:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+            ]
+        )
 
     # Build dataloader from paths
     loader = DataLoader(
@@ -103,6 +117,8 @@ def evaluate_sex_classification(paths, args):
             enumerate(loader), total=len(loader), desc="Predicting sex..."
         ):
             images = batch["vol_data"].to(args.device).float()
+            if len(images.shape) == 4:
+                images = images.unsqueeze(0)
             sex_labels = batch["vol_data"].meta["sex"].to(args.device)
             outputs = model(images)
             sex_preds = (torch.sigmoid(outputs) > 0.5).long()

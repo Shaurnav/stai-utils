@@ -19,10 +19,48 @@ from monai.transforms import (
 
 from stai_utils.datasets.dataset_utils import FileListDataset
 from stai_utils.evaluations.models.unet3d.model import UNet3D
+from stai_utils.evaluations.models.net import UNetEncoder
 from stai_utils.evaluations.models.finetune_model import FinetuneModel
 
 
-def get_model(checkpoint_path):
+def get_ageregressor_balanced_model():
+    cluster_name = os.getenv("CLUSTER_NAME")
+    if cluster_name == "sc":
+        checkpoint_path = "/simurgh/u/alanqw/models/age_regressor_balanceddecade/epoch110_trained_model.pth.tar"
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
+        )
+    encoder = UNetEncoder(dim=3, input_ch=1, out_dim=256, norm_type="instance")
+
+    state_dict = torch.load(checkpoint_path)["state_dict"]
+
+    model = FinetuneModel(
+        encoder,
+        output_dim=1,
+        dim=3,
+        use_checkpoint=False,
+        pred_head_type="linear",
+    )
+    model.load_state_dict(state_dict)
+    return model
+
+
+def get_ageregressor_model():
+    cluster_name = os.getenv("CLUSTER_NAME")
+    if cluster_name == "haic":
+        checkpoint_path = (
+            "/hai/scratch/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
+        )
+    elif cluster_name == "sc":
+        checkpoint_path = (
+            "/simurgh/u/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
+        )
+    else:
+        raise ValueError(
+            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
+        )
+
     encoder = UNet3D(
         1,
         1,
@@ -57,47 +95,53 @@ class MyReader(NumpyReader):
         return img, meta
 
 
-def evaluate_age_regression(paths, args):
-    cluster_name = os.getenv("CLUSTER_NAME")
-    if cluster_name == "haic":
-        checkpoint_path = (
-            "/hai/scratch/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
-        )
-    elif cluster_name == "sc":
-        checkpoint_path = (
-            "/simurgh/u/alanqw/models/age_regressor/epoch148_trained_model.pth.tar"
-        )
+def evaluate_age_regression(
+    balanced_decade_model, paths, args, apply_val_transforms=False
+):
+    if balanced_decade_model:
+        model = get_ageregressor_balanced_model()
     else:
-        raise ValueError(
-            f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
-        )
-    model = get_model(checkpoint_path)
+        model = get_ageregressor_model()
     model.to(args.device)
     model.eval()
 
     data_key = "vol_data"
     spacing = (1, 1, 1)
     img_size = (160, 192, 176)
-    val_transforms = Compose(
-        [
-            LoadImaged(
-                keys=[data_key],
-                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
-            ),
-            EnsureChannelFirstd(keys=[data_key]),
-            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-            EnsureTyped(keys=[data_key]),
-            Orientationd(keys=[data_key], axcodes="RAS"),
-            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
-            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
-            ScaleIntensityRangePercentilesd(
-                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys=data_key, dtype=torch.float32),
-        ]
-    )
+    if apply_val_transforms:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
+            ]
+        )
+    else:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+            ]
+        )
 
     # Build dataloader from paths
     loader = DataLoader(
@@ -119,6 +163,8 @@ def evaluate_age_regression(paths, args):
             enumerate(loader), total=len(loader), desc="Predicting age..."
         ):
             images = val_data["vol_data"].float().to(args.device)
+            if len(images.shape) == 4:
+                images = images.unsqueeze(0)
             labels = val_data["vol_data"].meta["age"][None].to(args.device)
             outputs = model(images)["pred_out"]
             val_loss = torch.nn.L1Loss()(outputs, labels.float())

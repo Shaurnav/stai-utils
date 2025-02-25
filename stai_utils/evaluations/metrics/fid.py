@@ -24,6 +24,8 @@ from monai.transforms import (
 from stai_utils.datasets.dataset_utils import FileListDataset
 from stai_utils.evaluations.models.resnet import resnet10
 from stai_utils.evaluations.util import create_dataloader_from_dir
+from stai_utils.evaluations.metrics.age_regressor import get_ageregressor_model
+from stai_utils.evaluations.metrics.sex_classifier import get_sexclassifier_model
 
 
 class MyReader(NumpyReader):
@@ -59,6 +61,25 @@ def _get_imagenet_model():
     res50 = resnet50(weights="ResNet50_Weights.DEFAULT")
     res50.eval()
     return res50
+
+
+def _extract_ageregressor_features_to_dir(
+    loader, dest_dir, feature_extractor, device, skip_existing=False
+):
+    dataset = loader.dataset
+    for i in tqdm(range(len(dataset)), desc="Extracting age regressor features"):
+        save_path = os.path.join(dest_dir, f"feat_{i}.npz")
+        if skip_existing and os.path.exists(save_path):
+            print(f"Skipping because {save_path} already exists...")
+            continue
+        data = dataset[i]
+        image = torch.tensor(data["vol_data"]).float().to(device)[None]
+        age = data["vol_data"].meta["age"]
+        sex = data["vol_data"].meta["sex"]
+        feat = feature_extractor(image)
+        print(feat.shape)
+
+        np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
 
 
 def _extract_medicalnet_features_to_dir(
@@ -153,6 +174,111 @@ def _extract_imagenet_features_to_dir(
         np.savez(save_path, feat=feat[0].cpu().detach().numpy(), age=age, sex=sex)
 
 
+def evaluate_fid_ageregressor(
+    real_img_paths,
+    fake_img_paths,
+    real_feat_dir,
+    fake_feat_dir,
+    device,
+    skip_existing,
+    apply_val_transforms=False,
+):
+    # Load the medicalnet model
+    ageregressor = get_ageregressor_model().encoder.to(device)
+    ageregressor = torch.nn.Sequential(
+        ageregressor, torch.nn.AdaptiveAvgPool3d(1), torch.nn.Flatten()
+    )
+
+    data_key = "vol_data"
+    spacing = (1, 1, 1)
+    img_size = (160, 192, 176)
+    if apply_val_transforms:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
+            ]
+        )
+    else:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+            ]
+        )
+
+    # Build dataloader from paths
+    real_img_loader = DataLoader(
+        FileListDataset(
+            real_img_paths,
+            transform=val_transforms,
+            data_key=data_key,
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+    fake_img_loader = DataLoader(
+        FileListDataset(
+            fake_img_paths,
+            transform=val_transforms,
+            data_key=data_key,
+        ),
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+
+    # Extract features from the real and fake samples
+    print("Extracting age regressor features...")
+    _extract_ageregressor_features_to_dir(
+        real_img_loader,
+        real_feat_dir,
+        ageregressor,
+        device,
+        skip_existing=skip_existing,
+    )
+    _extract_ageregressor_features_to_dir(
+        fake_img_loader,
+        fake_feat_dir,
+        ageregressor,
+        device,
+        skip_existing=skip_existing,
+    )
+
+    real_feat_loader = create_dataloader_from_dir(real_feat_dir)
+    fake_feat_loader = create_dataloader_from_dir(fake_feat_dir)
+
+    real_feats = []
+    fake_feats = []
+    for real, fake in zip(real_feat_loader, fake_feat_loader):
+        real_feats.append(real["feat"])
+        fake_feats.append(fake["feat"])
+    return FIDMetric()(torch.vstack(fake_feats), torch.vstack(real_feats)).item()
+
+
 def evaluate_fid_medicalnet3d(
     real_img_paths,
     fake_img_paths,
@@ -160,6 +286,7 @@ def evaluate_fid_medicalnet3d(
     fake_feat_dir,
     device,
     skip_existing,
+    apply_val_transforms=False,
 ):
     # Load the medicalnet model
     medicalnet = _get_medicalnet_model().to(device)
@@ -167,26 +294,40 @@ def evaluate_fid_medicalnet3d(
     data_key = "vol_data"
     spacing = (1, 1, 1)
     img_size = (160, 192, 176)
-    val_transforms = Compose(
-        [
-            LoadImaged(
-                keys=[data_key],
-                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
-            ),
-            EnsureChannelFirstd(keys=[data_key]),
-            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-            EnsureTyped(keys=[data_key]),
-            Orientationd(keys=[data_key], axcodes="RAS"),
-            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
-            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
-            ScaleIntensityRangePercentilesd(
-                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys=data_key, dtype=torch.float32),
-        ]
-    )
+    if apply_val_transforms:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
+            ]
+        )
+    else:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+            ]
+        )
 
     # Build dataloader from paths
     real_img_loader = DataLoader(
@@ -239,6 +380,7 @@ def evaluate_fid_imagenet2d(
     fake_feat_dir,
     device,
     skip_existing,
+    apply_val_transforms=False,
 ):
     # Load the imagenet model
     imagenet = _get_imagenet_model().to(device)
@@ -246,26 +388,40 @@ def evaluate_fid_imagenet2d(
     data_key = "vol_data"
     spacing = (1, 1, 1)
     img_size = (160, 192, 176)
-    val_transforms = Compose(
-        [
-            LoadImaged(
-                keys=[data_key],
-                reader=MyReader(npz_keys=["vol_data", "age", "sex"], channel_dim=None),
-            ),
-            EnsureChannelFirstd(keys=[data_key]),
-            Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-            EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-            EnsureTyped(keys=[data_key]),
-            Orientationd(keys=[data_key], axcodes="RAS"),
-            Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
-            ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-            # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
-            ScaleIntensityRangePercentilesd(
-                keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
-            ),
-            EnsureTyped(keys=data_key, dtype=torch.float32),
-        ]
-    )
+    if apply_val_transforms:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+                EnsureChannelFirstd(keys=[data_key]),
+                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
+                EnsureTyped(keys=[data_key]),
+                Orientationd(keys=[data_key], axcodes="RAS"),
+                Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
+                ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
+                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
+                ScaleIntensityRangePercentilesd(
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                ),
+                EnsureTyped(keys=data_key, dtype=torch.float32),
+            ]
+        )
+    else:
+        val_transforms = Compose(
+            [
+                LoadImaged(
+                    keys=[data_key],
+                    reader=MyReader(
+                        npz_keys=["vol_data", "age", "sex"], channel_dim=None
+                    ),
+                ),
+            ]
+        )
 
     # Build dataloader from paths
     real_img_loader = DataLoader(
