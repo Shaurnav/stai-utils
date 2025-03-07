@@ -64,87 +64,70 @@ def perform_data_qc(l):
     return qc
 
 
-def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
+def get_all_file_list_bwm_sherlock(
+    read_from_scr=False, modality=("t1", "t2"), verbose=True
+):
     """Returns file list for data in BWM Sherlock directory."""
+    if read_from_scr:
+        root_dir = "/scr/alanqw/BWM/Sherlock/"
+    else:
+        root_dir = "/hai/scratch/alanqw/BWM/Sherlock/"
+
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
-        PREFIX_MAP = {
-            "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-            "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
-            "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-            #####
-            "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
-            "proc/t2/abcd_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/abcd/",
-            "proc/t2/hcp_ag_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/hcp_ag/",
-            "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
-        }
-        t1_dataset_names = [
-            "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
-        ]
-        t2_dataset_names = [
-            "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-            "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
-            # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
-        ]
+        raise NotImplementedError
+        # PREFIX_MAP = {
+        #     "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+        #     "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
+        #     "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
+        #     #####
+        #     "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
+        #     "proc/t2/abcd_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/abcd/",
+        #     "proc/t2/hcp_ag_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/hcp_ag/",
+        #     "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
+        # }
+        # t1_dataset_names = [
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
+        # ]
+        # t2_dataset_names = [
+        #     "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
+        #     "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
+        #     # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
+        # ]
     elif cluster_name == "haic":
-        PREFIX_MAP = {
-            # "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-            # "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
-            # "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-            #####
-            "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/",
-            "proc/t2/abcd_t2/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/abcd/",
-            "proc/t2/hcp_ag_t2/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/hcp_ag/",
-            "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/hai/scratch/alanqw/BWM/Sherlock/t2/fully_proc/",
-        }
         t1_dataset_names = [
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/abcd/paths_and_info_flexpath.pkl",
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/adni_t1/paths_and_info_flexpath.pkl",
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_ag_t1/paths_and_info_flexpath.pkl",
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_dev_t1/paths_and_info_flexpath.pkl",
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/hcp_ya_mpr1/paths_and_info_flexpath.pkl",
-            "/hai/scratch/fangruih/monai-tutorials/generative/3d_ldm/metadata/ppmi_t1/paths_and_info_flexpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/abcd/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/adni/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/ppmi/paths_and_info_relpath.pkl",
         ]
         t2_dataset_names = [
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
             # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info_relpath.pkl",
             # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
         ]
-    # elif cluster_name == "sherlock":
+    elif cluster_name == "sherlock":
+        raise NotImplementedError
     else:
         raise ValueError(
             f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
         )
-
-    def fix_paths(old_paths):
-        new_paths = []
-        for path in old_paths:
-            # Find the prefix that matches the path
-            old_prefix = [p for p in tuple(PREFIX_MAP.keys()) if path.startswith(p)]
-            if len(old_prefix) == 0:
-                new_paths.append(path)  # No match found, don't change the path
-            elif len(old_prefix) == 1:
-                old_prefix = old_prefix[0]
-                new_prefix = PREFIX_MAP[old_prefix]
-                updated_path = path.replace(old_prefix, new_prefix, 1)
-                new_paths.append(updated_path)
-            else:
-                raise ValueError("Multiple matches found for path:", path)
-
-        return new_paths
 
     if isinstance(modality, str):
         modality = [modality]
@@ -169,17 +152,65 @@ def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
             with open(dataset_name, "rb") as file:
                 data = pickle.load(file)
 
+                def filter_dict_by_key(data, filter_key, filter_value):
+                    """
+                    Filters all lists in a dictionary based on whether the entries in a specific key match a given value.
+
+                    Parameters:
+                    - data (dict): A dictionary where all values are lists of the same length.
+                    - filter_key (str): The key whose values will be used for filtering.
+                    - filter_value (any): The value to filter by.
+
+                    Returns:
+                    - dict: A new dictionary with only the filtered entries.
+                    """
+                    if filter_key not in data:
+                        raise KeyError(
+                            f"Key '{filter_key}' not found in the dictionary."
+                        )
+
+                    # Boolean mask (True where the value matches filter_value)
+                    mask = [val == filter_value for val in data[filter_key]]
+
+                    # Filter each list using list comprehension to handle varying data types
+                    return {
+                        k: [v[i] for i in range(len(v)) if mask[i]]
+                        for k, v in data.items()
+                    }
+
+                if "adni" in dataset_name:
+                    data["train"] = filter_dict_by_key(data["train"], "groups", "CN")
+                    data["val"] = filter_dict_by_key(data["val"], "groups", "CN")
+
+                if "ppmi" in dataset_name:
+                    data["train"] = filter_dict_by_key(
+                        data["train"], "groups", "Control"
+                    )
+                    data["val"] = filter_dict_by_key(data["val"], "groups", "Control")
+
                 age_key = "ages" if "ages" in data["train"].keys() else "age"
                 sex_key = "sexes" if "sexes" in data["train"].keys() else "sex"
 
                 # Convert paths and ages to lists if they are NumPy arrays
-                dataset_train_paths = data["train"]["paths"].tolist()
-                dataset_train_ages = data["train"][age_key].tolist()
-                dataset_train_sexes = data["train"][sex_key].tolist()
+                dataset_train_paths = data["train"]["paths"]
+                if isinstance(dataset_train_paths, np.ndarray):
+                    dataset_train_paths = dataset_train_paths.tolist()
+                dataset_train_ages = data["train"][age_key]
+                if isinstance(dataset_train_ages, np.ndarray):
+                    dataset_train_ages = dataset_train_ages.tolist()
+                dataset_train_sexes = data["train"][sex_key]
+                if isinstance(dataset_train_sexes, np.ndarray):
+                    dataset_train_sexes = dataset_train_sexes.tolist()
 
-                dataset_val_paths = data["val"]["paths"].tolist()
-                dataset_val_ages = data["val"][age_key].tolist()
-                dataset_val_sexes = data["val"][sex_key].tolist()
+                dataset_val_paths = data["val"]["paths"]
+                if isinstance(dataset_val_paths, np.ndarray):
+                    dataset_val_paths = dataset_val_paths.tolist()
+                dataset_val_ages = data["val"][age_key]
+                if isinstance(dataset_val_ages, np.ndarray):
+                    dataset_val_ages = dataset_val_ages.tolist()
+                dataset_val_sexes = data["val"][sex_key]
+                if isinstance(dataset_val_sexes, np.ndarray):
+                    dataset_val_sexes = dataset_val_sexes.tolist()
 
                 assert (
                     len(dataset_train_paths)
@@ -210,21 +241,14 @@ def get_all_file_list_bwm_sherlock(modality=("t1", "t2"), verbose=True):
                 val_sexes += dataset_val_sexes
                 val_modalities += [MODALITY_MAP[m]] * len(dataset_val_paths)
 
-        if m == "t1":  # TODO: remove this
-            train_paths = [
-                "/hai/scratch/fangruih/data/" + train_path for train_path in train_paths
-            ]
-            val_paths = [
-                "/hai/scratch/fangruih/data/" + val_path for val_path in val_paths
-            ]
-
-        train_paths = fix_paths(train_paths)
-        val_paths = fix_paths(val_paths)
-
     assert (
         len(train_paths) == len(train_ages) == len(train_sexes) == len(train_modalities)
     )
     assert len(val_paths) == len(val_ages) == len(val_sexes) == len(val_modalities)
+
+    # Prepend root file path
+    train_paths = [os.path.join(root_dir, p) for p in train_paths]
+    val_paths = [os.path.join(root_dir, p) for p in val_paths]
 
     train_data = list(zip(train_paths, train_ages, train_sexes, train_modalities))
     val_data = list(zip(val_paths, val_ages, val_sexes, val_modalities))
@@ -280,8 +304,9 @@ class BWMSherlock:
         self,
         img_size,
         num_workers,
+        read_from_scr=True,
         modality=("t1", "t2"),
-        zscore_age=False,
+        age_normalization=None,
         rank=0,
         world_size=1,
         spacing=(1.0, 1.0, 1.0),
@@ -289,13 +314,19 @@ class BWMSherlock:
         sample_balanced_age_for_training=False,
     ):
         self.num_workers = num_workers
+        assert age_normalization in [
+            None,
+            "zscore",
+            "min-max",
+        ], "Choose a valid age normalization method"
+        self.age_normalization = age_normalization
         self.modality = modality
-        self.zscore_age = zscore_age
         self.rank = rank
         self.world_size = world_size
         self.ddp_bool = world_size > 1
         self.data_key = data_key
         self.sample_balanced_age_for_training = sample_balanced_age_for_training
+        self.read_from_scr = read_from_scr
 
         self.age_mu = 0
         self.age_sigma = 1
@@ -335,29 +366,50 @@ class BWMSherlock:
             ]
         )
 
-    def zscore_normalize_age(self, age):
-        return (age - self.age_mu) / (self.age_sigma + 1e-8)
+    @staticmethod
+    def _zscore_normalize(x, mu, sigma):
+        return (x - mu) / (sigma + 1e-8)
 
-    def zscore_unnormalize_age(self, age):
-        return age * self.age_sigma + self.age_mu
+    @staticmethod
+    def _inverse_zscore_normalize(x, mu, sigma):
+        return x * sigma + mu
 
-    def get_dataloaders(
-        self,
-        batch_size,
-    ):
-        train_data, val_data = get_all_file_list_bwm_sherlock(self.modality)
+    @staticmethod
+    def _min_max_scale(x, min_val, max_val):
+        return (x - min_val) / (max_val - min_val)
+
+    @staticmethod
+    def _inverse_min_max_scale(x, min_val, max_val):
+        return x * (max_val - min_val) + min_val
+
+    def normalize_age(self, ages):
+        if self.age_normalization == "zscore":
+            ages = self._zscore_normalize(ages, self.age_mu, self.age_sigma)
+        elif self.age_normalization == "min-max":
+            ages = self._min_max_scale(ages, self.age_min, self.age_max)
+        return ages
+
+    def get_dataloaders(self, batch_size, drop_last=False):
+        train_data, val_data = get_all_file_list_bwm_sherlock(
+            read_from_scr=self.read_from_scr, modality=self.modality
+        )
 
         train_paths, train_ages, train_sexes, train_modalities = zip(*train_data)
         val_paths, val_ages, val_sexes, val_modalities = zip(*val_data)
 
         train_ages = np.array(train_ages)
         val_ages = np.array(val_ages)
-        if self.zscore_age:
+        if self.age_normalization == "zscore":
             # Z-score normalization for age
-            self.age_mu = np.mean(train_ages)
-            self.age_sigma = np.std(train_ages)
-            train_ages = self.zscore_normalize_age(train_ages)
-            val_ages = self.zscore_normalize_age(val_ages)
+            self.age_mu = train_ages.mean()
+            self.age_sigma = train_ages.std()
+            train_ages = self._zscore_normalize(train_ages, self.age_mu, self.age_sigma)
+            val_ages = self._zscore_normalize(val_ages, self.age_mu, self.age_sigma)
+        elif self.age_normalization == "min-max":
+            self.age_min = train_ages.min()
+            self.age_max = train_ages.max()
+            train_ages = self._min_max_scale(train_ages, self.age_min, self.age_max)
+            val_ages = self._min_max_scale(val_ages, self.age_min, self.age_max)
 
         # Zip the conditions into one single list
         train_conditions = [
@@ -406,6 +458,7 @@ class BWMSherlock:
             num_workers=self.num_workers,
             pin_memory=False,
             sampler=train_sampler,
+            drop_last=drop_last,
         )
         val_loader = DataLoader(
             val_ds,
@@ -414,26 +467,65 @@ class BWMSherlock:
             num_workers=self.num_workers,
             pin_memory=False,
             sampler=val_sampler,
+            drop_last=drop_last,
         )
         return train_loader, val_loader
 
-    def get_age_balanced_sampler(self, ages):
-        # Assuming condition_list holds age information
-        age_groups = [age // 10 for age in ages]
-        unique_groups, group_counts = np.unique(age_groups, return_counts=True)
-        group_weights = {
-            group: 1.0 / count for group, count in zip(unique_groups, group_counts)
-        }
+    def get_age_balanced_sampler(self, ages, num_bins=10):
+        """
+        Create a weighted sampler that balances samples across age bins,
+        agnostic to the units of the age values (e.g., years, normalized, etc.).
 
-        # Assign weight to each sample based on its age group
-        sample_weights = [group_weights[age_group] for age_group in age_groups]
+        Parameters:
+            ages (iterable): A list or array of age values.
+            num_bins (int): The number of bins to use for balancing. Default is 10.
 
-        # Define a sampler using the sample weights
+        Returns:
+            WeightedRandomSampler: A sampler that samples items inversely
+                                proportional to the frequency of their age bin.
+        """
+        ages = np.array(ages)
+        print("Input ages:", ages)
+
+        # Handle the edge case where all ages are nearly identical.
+        if np.allclose(ages.min(), ages.max()):
+            print(
+                "All ages are approximately equal. Assigning equal weights to all samples."
+            )
+            sample_weights = np.ones_like(ages, dtype=float)
+        else:
+            print(f"Age range: min = {ages.min()}, max = {ages.max()}")
+            # Create bins that span the range of the age values.
+            bins = np.linspace(ages.min(), ages.max(), num_bins + 1)
+            print("Computed bins:", bins)
+
+            # Determine bin indices for each age.
+            # Adjusting the index so that each age falls into a bin between 0 and (num_bins - 1)
+            bin_indices = np.searchsorted(bins, ages, side="right") - 1
+            print("Assigned bin indices:", bin_indices)
+
+            # Compute the count of samples in each bin.
+            unique_bins, counts = np.unique(bin_indices, return_counts=True)
+            print("Unique bins and their counts:")
+            for bin_val, count in zip(unique_bins, counts):
+                print(f"  Bin {bin_val}: {count} sample(s)")
+
+            # Compute weights for each bin as the inverse of the count.
+            bin_weights = {
+                bin_idx: 1.0 / count for bin_idx, count in zip(unique_bins, counts)
+            }
+            print("Calculated bin weights (inverse frequency):", bin_weights)
+
+            # Map each sample to the weight corresponding to its bin.
+            sample_weights = [bin_weights[idx] for idx in bin_indices]
+            print("Final sample weights:", sample_weights)
+
+        # Create the weighted random sampler.
         sampler = WeightedRandomSampler(
             sample_weights, num_samples=len(sample_weights), replacement=True
         )
+        print(f"Created WeightedRandomSampler with {len(sample_weights)} samples.")
 
-        # Return a DataLoader with the balanced sampler
         return sampler
 
 
