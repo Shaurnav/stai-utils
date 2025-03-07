@@ -5,7 +5,9 @@ import seaborn as sns
 import itertools
 
 
-def boxplot_loss_vs_agebins(models, bins_to_ignore=None, box_widths=0.2):
+def boxplot_loss_vs_agebins(
+    models, bins_to_ignore=None, box_widths=0.2, colors=None, save_path=None
+):
     """
     Plot side-by-side boxplots of loss binned by decades for multiple models.
 
@@ -14,6 +16,13 @@ def boxplot_loss_vs_agebins(models, bins_to_ignore=None, box_widths=0.2):
     """
     # Initialize a list to hold the data for all models
     all_data = []
+
+    # Get default color cycle if no colors provided
+    default_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    color_map = {
+        model: colors.get(model, default_colors[i % len(default_colors)])
+        for i, model in enumerate(models.keys())
+    }
 
     # Iterate over the models to load and process the data
     for model_name, json_path in models.items():
@@ -53,7 +62,7 @@ def boxplot_loss_vs_agebins(models, bins_to_ignore=None, box_widths=0.2):
     x_positions = np.arange(len(decades))
 
     # Plot the boxplots
-    plt.figure(figsize=(15, 6))
+    plt.figure(figsize=(15, 4))
     for i, model_name in enumerate(models_list):
         model_positions = (
             x_positions - total_width / 2 + i * box_widths + box_widths / 2
@@ -63,21 +72,24 @@ def boxplot_loss_vs_agebins(models, bins_to_ignore=None, box_widths=0.2):
             positions=model_positions,
             widths=box_widths,
             patch_artist=True,
-            boxprops=dict(facecolor=f"C{i}"),
+            boxprops=dict(facecolor=color_map[model_name]),
             medianprops=dict(color="black"),
             label=model_name,
         )
 
     # Set x-axis ticks and labels
     interval_labels = [f"[{decade}, {decade + 10})" for decade in decades]
-    plt.xticks(ticks=x_positions, labels=interval_labels, rotation=0)
-    plt.xlabel("Age Decade")
-    plt.ylabel("MAE")
+    plt.xticks(ticks=x_positions, labels=interval_labels, rotation=0, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xlabel("Age Decade", fontsize=16)
+    plt.ylabel("MAE", fontsize=16)
     # plt.title("Loss Values Binned by Decades Across Models")
-    plt.legend()
+    plt.legend(fontsize=16)
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.tight_layout()
 
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
     # Show the plot
     plt.show()
 
@@ -390,10 +402,22 @@ def barplot_absolute_cohens_d(model_files):
     plt.show()
 
 
-def barplot_grouped_absolute_cohens_d(model_files, structure_groups, ignore_indices):
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def barplot_grouped_absolute_cohens_d(
+    model_files,
+    structure_groups,
+    ignore_indices,
+    colors=None,
+    vline_offset=0,
+    save_path=None,
+):
     """
     Plots a bar graph of the absolute values of Cohen's d for grouped brain structures across multiple models,
-    while ignoring specified indices.
+    while ignoring specified indices. Allows specifying bar colors per model.
 
     Args:
         model_files (dict): A dictionary where keys are model names and values are paths to JSON files
@@ -401,20 +425,7 @@ def barplot_grouped_absolute_cohens_d(model_files, structure_groups, ignore_indi
         structure_groups (dict): A dictionary where keys are brain region names and values are lists of indices
                                  corresponding to that brain region.
         ignore_indices (set): A set of indices to ignore in the plot.
-
-    Example:
-        model_files = {
-            "Model 1": "path/to/model1.json",
-            "Model 2": "path/to/model2.json",
-        }
-
-        structure_groups = {
-            "Cerebral White Matter": [2, 41],
-            "Cerebral Cortex": [3, 42],
-            ...
-        }
-
-        ignore_indices = {0, 14, 15}
+        colors (dict, optional): A dictionary mapping model names to specific colors. If None, defaults will be used.
     """
     # Load all JSON data
     data = {}
@@ -437,29 +448,53 @@ def barplot_grouped_absolute_cohens_d(model_files, structure_groups, ignore_indi
     x = np.arange(len(structure_groups))  # X-axis positions for brain regions
     width = 0.8 / len(model_files)  # Adjust bar width to fit all models
 
-    plt.figure(figsize=(14, 7))
+    plt.figure(figsize=(14, 4))
+
+    # Get default color cycle if no colors provided
+    default_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    color_map = {
+        model: colors.get(model, default_colors[i % len(default_colors)])
+        for i, model in enumerate(model_files.keys())
+    }
+
     for i, model_name in enumerate(model_files.keys()):
         # Extract grouped values for the current model
         values = [
             grouped_data[region][model_name] for region in structure_groups.keys()
         ]
         # Offset the bar positions for each model
-        plt.bar(x + i * width, values, width, label=model_name)
+        plt.bar(
+            x + i * width, values, width, label=model_name, color=color_map[model_name]
+        )
+
+    # Add a vertical dashed line after the 10th group
+    if len(structure_groups) > 10:
+        sep_position = x[9] + width * (len(model_files) - 1) / 2
+        plt.axvline(
+            x=sep_position + vline_offset,
+            linestyle="--",
+            color="black",
+            alpha=0.6,
+            linewidth=1,
+        )
 
     # Customize the plot
     plt.xticks(
         x + width * (len(model_files) - 1) / 2,
         structure_groups.keys(),
-        rotation=45,
-        ha="right",
+        rotation=20,
+        ha="center",
+        fontsize=12,
     )
-    plt.xlabel("Brain Region")
-    plt.ylabel("Absolute Cohen's d Value")
-    plt.title("Absolute Cohen's d Values Across Brain Regions for Different Models")
-    plt.legend(title="Models")
+    plt.yticks(fontsize=12)
+    plt.xlabel("Brain Region", fontsize=16)
+    plt.ylabel("Absolute Cohen's d", fontsize=16)
+    plt.legend(fontsize=16)
     plt.grid(axis="y", linestyle="--", alpha=0.7)
     plt.tight_layout()
 
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
     # Show the plot
     plt.show()
 
