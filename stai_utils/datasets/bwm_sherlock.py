@@ -108,7 +108,7 @@ def get_all_file_list_bwm_sherlock(
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/abcd/paths_and_info_relpath.pkl",
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/adni/paths_and_info_relpath.pkl",
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath.pkl",
+            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath_w_mninonlinear.pkl",
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info_relpath.pkl",
             "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/ppmi/paths_and_info_relpath.pkl",
