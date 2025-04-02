@@ -343,7 +343,7 @@ class BWMSherlock:
                 ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
                 # train_crop_transform,
                 ScaleIntensityRangePercentilesd(
-                    keys=data_key, lower=0, upper=100, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
                 ),
                 EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
@@ -518,7 +518,7 @@ class BWMSherlock:
 
             # Map each sample to the weight corresponding to its bin.
             sample_weights = [bin_weights[idx] for idx in bin_indices]
-            print("Final sample weights:", sample_weights)
+            # print("Final sample weights:", sample_weights)
 
         # Create the weighted random sampler.
         sampler = WeightedRandomSampler(
