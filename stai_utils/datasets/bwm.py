@@ -64,9 +64,7 @@ def perform_data_qc(l):
     return qc
 
 
-def get_all_file_list_bwm_sherlock(
-    read_from_scr=False, modality=("t1", "t2"), verbose=True
-):
+def get_all_file_list_bwm(read_from_scr=False, modality=("t1", "t2"), verbose=True):
     """Returns file list for data in BWM Sherlock directory."""
     if read_from_scr:
         root_dir = "/scr/alanqw/BWM/Sherlock/"
@@ -75,53 +73,43 @@ def get_all_file_list_bwm_sherlock(
 
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
-        raise NotImplementedError
-        # PREFIX_MAP = {
-        #     "/scratch/groups/eadeli/data/stru_new/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-        #     "proc/t1/hcp_dev_t1/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/hcp_dev/",
-        #     "/simurgh/group/BWM/Sherlock/t1/fully_proc/": "/simurgh/group/BWM/Sherlock/t1/fully_proc/",
-        #     #####
-        #     "/scratch/groups/eadeli/data/stru_new/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
-        #     "proc/t2/abcd_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/abcd/",
-        #     "proc/t2/hcp_ag_t2/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/hcp_ag/",
-        #     "/simurgh/group/BWM/Sherlock/t2/fully_proc/": "/simurgh/group/BWM/Sherlock/t2/fully_proc/",
-        # }
+        t1_path = glob(
+            "/simurgh/group/BWM/DataSets/HCP-YA/processed/Structural/registration/*/*/unprocessed/3T/T1w_MPR1/*T1w_*_brain_mni_warped.nii.gz"
+        )
+        t2_path = glob(
+            "/simurgh/group/BWM/DataSets/HCP-YA/processed/Structural/registration/*/*/unprocessed/3T/T1w_MPR1/*T2w_*_brain_mni_warped.nii.gz"
+        )
+
+        t2_path = glob('/simurgh/group/BWM/DataSets/HCP-Development/processed/Structural/registration/*/T1w/T2w_acpc_dc_restore_brain_mni_warped.nii.gz')
+        t1_path = glob('/simurgh/group/BWM/DataSets/HCP-Development/processed/Structural/registration/*/T1w/T1w_acpc_dc_restore_brain_mni_warped.nii.gz')
+
+        t2_path = glob('/simurgh/group/BWM/DataSets/HCP-Aging/processed/Structural/registration/*/T1w/T2w_acpc_dc_restore_brain_mni_warped.nii.gz')
+        t1_path = glob('/simurgh/group/BWM/DataSets/HCP-Aging/processed/Structural/registration/*/T1w/T1w_acpc_dc_restore_brain_mni_warped.nii.gz')
+
+        t1_path = glob('/simurgh/group/BWM/DataSets/OpenNeuro/processed/Structural/registration/*/*/anat/*_acq-MPRAGE_T1w_brain_mni_warped.nii.gz')
+        t2_path = glob('/simurgh/group/BWM/DataSets/OpenNeuro/processed/Structural/registration/*/*/anat/*_acq-CUBE_T2w_brain_mni_warped.nii.gz')
+
+
+    elif cluster_name == "haic":
         # t1_dataset_names = [
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/abcd/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/adni/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/ppmi/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/abcd/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/adni/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath_w_mninonlinear.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/ppmi/paths_and_info_relpath.pkl",
         # ]
         # t2_dataset_names = [
-        #     "/simurgh/group/BWM/Sherlock/t2/metadata/ppmi/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-        #     "/simurgh/group/BWM/Sherlock/t2/metadata/abcd/paths_and_info.pkl",
-        #     # "/simurgh/group/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
+        #     # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear_relpath.pkl",
+        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info_relpath.pkl",
+        #     # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
         # ]
-    elif cluster_name == "haic":
-        t1_dataset_names = [
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/abcd/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/adni/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath_w_mninonlinear.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/ppmi/paths_and_info_relpath.pkl",
-        ]
-        t2_dataset_names = [
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
-            # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear_relpath.pkl",
-            "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info_relpath.pkl",
-            # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
-        ]
+        raise NotImplementedError
     elif cluster_name == "sherlock":
         raise NotImplementedError
     else:
@@ -322,7 +310,7 @@ class FileListDataset(Dataset):
             raise  # Re-raise the original exception
 
 
-class BWMSherlock:
+class BWM:
     def __init__(
         self,
         img_size,

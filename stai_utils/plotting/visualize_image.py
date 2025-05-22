@@ -13,6 +13,9 @@ import numpy as np
 from monai.utils.type_conversion import convert_to_numpy
 
 import matplotlib.pyplot as plt
+import torch
+import io
+from PIL import Image as PILImage
 
 
 def normalize_image_to_uint8(image):
@@ -92,3 +95,98 @@ def plot_latent(z, title=None):
         plt.suptitle(title, fontsize=20)
     plt.tight_layout()
     plt.show()
+
+
+def figure_to_tensor(fig):
+    """
+    Convert a matplotlib figure to a PyTorch tensor.
+
+    Args:
+        fig: matplotlib figure object
+
+    Returns:
+        torch.Tensor of shape (3, H, W) with values in range [0, 1]
+    """
+    # Save figure to a buffer
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+    buf.seek(0)
+
+    # Convert to PIL Image
+    img = PILImage.open(buf).convert("RGB")
+
+    # Convert to tensor and normalize to [0, 1]
+    img_tensor = torch.from_numpy(np.array(img)).permute(2, 0, 1).float() / 255.0
+
+    # Clean up
+    plt.close(fig)
+
+    return img_tensor
+
+
+def visualize_displacement_field(
+    disp,
+    batch_idx: int = 0,
+    figsize: tuple[float, float] = (15, 5),
+    show_quiver: bool = False,
+    quiver_stride: int = 8,
+):
+    """
+    Visualize mid‐slice magnitude (and optionally quiver arrows) of a 3D displacement field.
+
+    Args:
+        disp: displacement field, shape (B, 3, D, H, W) or (3, D, H, W)
+        batch_idx: which batch element to visualize (if B>1)
+        figsize: matplotlib figure size
+        show_quiver: if True, overlay quiver arrows on magnitude
+        quiver_stride: downsampling factor for quiver arrows
+    """
+    # to numpy
+    if isinstance(disp, torch.Tensor):
+        disp = disp.detach().cpu().numpy()
+    # squeeze batch
+    if disp.ndim == 5:
+        disp = disp[batch_idx]
+
+    # disp now shape (3, D, H, W)
+    # compute magnitude
+    mag = np.sqrt(np.sum(disp**2, axis=0))
+    D, H, W = mag.shape
+
+    # choose mid‐slice indices
+    z0, y0, x0 = D // 2, H // 2, W // 2
+
+    slices = {
+        f"Axial (Z={z0})": mag[z0, :, :],
+        f"Coronal (Y={y0})": mag[:, y0, :],
+        f"Sagittal (X={x0})": mag[:, :, x0],
+    }
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    for ax, (title, im) in zip(axes, slices.items()):
+        ax.imshow(im.T, origin="lower")
+        ax.set_title(title)
+        ax.axis("off")
+
+        if show_quiver:
+            # get corresponding vector‐components for arrows
+            if "Axial" in title:
+                u = disp[0, z0, ::quiver_stride, ::quiver_stride]
+                v = disp[1, z0, ::quiver_stride, ::quiver_stride]
+            elif "Coronal" in title:
+                u = disp[0, ::quiver_stride, y0, ::quiver_stride]
+                v = disp[2, ::quiver_stride, y0, ::quiver_stride]
+            else:  # Sagittal
+                u = disp[1, ::quiver_stride, ::quiver_stride, x0]
+                v = disp[2, ::quiver_stride, ::quiver_stride, x0]
+
+            X, Y = np.meshgrid(
+                np.arange(u.shape[1]) * quiver_stride,
+                np.arange(u.shape[0]) * quiver_stride,
+            )
+            ax.quiver(
+                X, Y, u.T, v.T, angles="xy", scale_units="xy", scale=1.0, width=0.002
+            )
+
+    plt.tight_layout()
+    return figure_to_tensor(fig)
