@@ -64,52 +64,26 @@ def perform_data_qc(l):
     return qc
 
 
-def get_all_file_list_bwm(read_from_scr=False, modality=("t1", "t2"), verbose=True):
-    """Returns file list for data in BWM Sherlock directory."""
-    if read_from_scr:
-        root_dir = "/scr/alanqw/BWM/Sherlock/"
-    else:
-        root_dir = "/hai/scratch/alanqw/BWM/Sherlock/"
+def get_all_file_list_bwm(modality=("t1", "t2"), verbose=True, unpaired_modality=False):
+    """Returns file list for data in BWM directory."""
 
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
-        t1_path = glob(
-            "/simurgh/group/BWM/DataSets/HCP-YA/processed/Structural/registration/*/*/unprocessed/3T/T1w_MPR1/*T1w_*_brain_mni_warped.nii.gz"
-        )
-        t2_path = glob(
-            "/simurgh/group/BWM/DataSets/HCP-YA/processed/Structural/registration/*/*/unprocessed/3T/T1w_MPR1/*T2w_*_brain_mni_warped.nii.gz"
-        )
-
-        t2_path = glob('/simurgh/group/BWM/DataSets/HCP-Development/processed/Structural/registration/*/T1w/T2w_acpc_dc_restore_brain_mni_warped.nii.gz')
-        t1_path = glob('/simurgh/group/BWM/DataSets/HCP-Development/processed/Structural/registration/*/T1w/T1w_acpc_dc_restore_brain_mni_warped.nii.gz')
-
-        t2_path = glob('/simurgh/group/BWM/DataSets/HCP-Aging/processed/Structural/registration/*/T1w/T2w_acpc_dc_restore_brain_mni_warped.nii.gz')
-        t1_path = glob('/simurgh/group/BWM/DataSets/HCP-Aging/processed/Structural/registration/*/T1w/T1w_acpc_dc_restore_brain_mni_warped.nii.gz')
-
-        t1_path = glob('/simurgh/group/BWM/DataSets/OpenNeuro/processed/Structural/registration/*/*/anat/*_acq-MPRAGE_T1w_brain_mni_warped.nii.gz')
-        t2_path = glob('/simurgh/group/BWM/DataSets/OpenNeuro/processed/Structural/registration/*/*/anat/*_acq-CUBE_T2w_brain_mni_warped.nii.gz')
-
-
+        root_dir = '/simurgh/group/BWM/'
+        pkl_files = [
+            '/simurgh/u/alanqw/BWM/hcpya_relpaths_and_metadata.pkl', 
+            '/simurgh/u/alanqw/BWM/hcpdev_relpaths_and_metadata.pkl', 
+            '/simurgh/u/alanqw/BWM/hcpag_relpaths_and_metadata.pkl', 
+            '/simurgh/u/alanqw/BWM/openneuro_relpaths_and_metadata.pkl'
+        ]
     elif cluster_name == "haic":
-        # t1_dataset_names = [
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/abcd/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/adni/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ag/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_dev/paths_and_info_relpath_w_mninonlinear.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/opne_ds004215/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t1/metadata/ppmi/paths_and_info_relpath.pkl",
-        # ]
-        # t2_dataset_names = [
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/ppmi/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/opne_ds004215/paths_and_info_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ya_hcp1200/paths_and_info_relpath.pkl",
-        #     # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_ag/paths_and_info_w_mninonlinear_relpath.pkl",
-        #     "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/abcd/paths_and_info_relpath.pkl",
-        #     # "/hai/scratch/alanqw/BWM/Sherlock/t2/metadata/hcp_dev/paths_and_info.pkl",
-        # ]
-        raise NotImplementedError
+        root_dir = '/hai/scratch/alanqw/BWM/'
+        pkl_files = [
+            '/hai/scratch/alanqw/BWM/pkl/hcpya_relpaths_and_metadata.pkl', 
+            '/hai/scratch/alanqw/BWM/pkl/hcpdev_relpaths_and_metadata.pkl', 
+            '/hai/scratch/alanqw/BWM/pkl/hcpag_relpaths_and_metadata.pkl', 
+            '/hai/scratch/alanqw/BWM/pkl/openneuro_relpaths_and_metadata.pkl'
+        ]
     elif cluster_name == "sherlock":
         raise NotImplementedError
     else:
@@ -120,126 +94,35 @@ def get_all_file_list_bwm(read_from_scr=False, modality=("t1", "t2"), verbose=Tr
     if isinstance(modality, str):
         modality = [modality]
 
-    train_paths = []
-    train_ages = []
-    train_sexes = []
-    train_modalities = []
-    val_paths = []
-    val_ages = []
-    val_sexes = []
-    val_modalities = []
+    train_data = []
+    val_data = []
 
-    for m in modality:
-        if m == "t1":
-            dataset_names = t1_dataset_names
-        elif m == "t2":
-            dataset_names = t2_dataset_names
-        else:
-            raise ValueError(f"Unknown modality: {m}")
-        for dataset_name in dataset_names:
-            with open(dataset_name, "rb") as file:
-                data = pickle.load(file)
+    for pkl_file in pkl_files:
+        with open(pkl_file, "rb") as f:
+            data = pickle.load(f)
+        
+        # Prepend root file path
+        for d in data:
+            if 't1_path' in d:
+                d['t1_path'] = os.path.join(root_dir, d['t1_path'])
+            if 't2_path' in d:
+                d['t2_path'] = os.path.join(root_dir, d['t2_path'])
 
-                def filter_dict_by_key(data, filter_key, filter_value):
-                    """
-                    Filters all lists in a dictionary based on whether the entries in a specific key match a given value.
+        # Unpaired modality
+        if unpaired_modality:
+            unpaired_data = []
+            for d in data:
+                if 't1_path' in d:
+                    unpaired_data.append({'path': d['t1_path'], 'age': d['age'], 'sex': d['sex'], 'modality': 't1'})
+                if 't2_path' in d:
+                    unpaired_data.append({'path': d['t2_path'], 'age': d['age'], 'sex': d['sex'], 'modality': 't2'})
+            data = unpaired_data
+        
+        # Split data into train and val
+        train_split, val_split = data[:int(len(data)*0.8)], data[int(len(data)*0.8):]
+        train_data.extend(train_split)
+        val_data.extend(val_split)
 
-                    Parameters:
-                    - data (dict): A dictionary where all values are lists of the same length.
-                    - filter_key (str): The key whose values will be used for filtering.
-                    - filter_value (any): The value to filter by.
-
-                    Returns:
-                    - dict: A new dictionary with only the filtered entries.
-                    """
-                    if filter_key not in data:
-                        raise KeyError(
-                            f"Key '{filter_key}' not found in the dictionary."
-                        )
-
-                    # Boolean mask (True where the value matches filter_value)
-                    mask = [val == filter_value for val in data[filter_key]]
-
-                    # Filter each list using list comprehension to handle varying data types
-                    return {
-                        k: [v[i] for i in range(len(v)) if mask[i]]
-                        for k, v in data.items()
-                    }
-
-                if "adni" in dataset_name:
-                    data["train"] = filter_dict_by_key(data["train"], "groups", "CN")
-                    data["val"] = filter_dict_by_key(data["val"], "groups", "CN")
-
-                if "ppmi" in dataset_name:
-                    data["train"] = filter_dict_by_key(
-                        data["train"], "groups", "Control"
-                    )
-                    data["val"] = filter_dict_by_key(data["val"], "groups", "Control")
-
-                age_key = "ages" if "ages" in data["train"].keys() else "age"
-                sex_key = "sexes" if "sexes" in data["train"].keys() else "sex"
-
-                # Convert paths and ages to lists if they are NumPy arrays
-                dataset_train_paths = data["train"]["paths"]
-                if isinstance(dataset_train_paths, np.ndarray):
-                    dataset_train_paths = dataset_train_paths.tolist()
-                dataset_train_ages = data["train"][age_key]
-                if isinstance(dataset_train_ages, np.ndarray):
-                    dataset_train_ages = dataset_train_ages.tolist()
-                dataset_train_sexes = data["train"][sex_key]
-                if isinstance(dataset_train_sexes, np.ndarray):
-                    dataset_train_sexes = dataset_train_sexes.tolist()
-
-                dataset_val_paths = data["val"]["paths"]
-                if isinstance(dataset_val_paths, np.ndarray):
-                    dataset_val_paths = dataset_val_paths.tolist()
-                dataset_val_ages = data["val"][age_key]
-                if isinstance(dataset_val_ages, np.ndarray):
-                    dataset_val_ages = dataset_val_ages.tolist()
-                dataset_val_sexes = data["val"][sex_key]
-                if isinstance(dataset_val_sexes, np.ndarray):
-                    dataset_val_sexes = dataset_val_sexes.tolist()
-
-                assert (
-                    len(dataset_train_paths)
-                    == len(dataset_train_ages)
-                    == len(dataset_train_sexes)
-                )
-                assert (
-                    len(dataset_val_paths)
-                    == len(dataset_val_ages)
-                    == len(dataset_val_sexes)
-                )
-                if verbose:
-                    print("Dataset:", dataset_name)
-                    print("Keys:", data["train"].keys())
-                    # for key in data['train'].keys():
-                    #     print(f'\n{key}')
-                    #     print(data['train'][key])
-                    print(f"-> Num train: {len(dataset_train_paths)}")
-                    print(f"-> Num val: {len(dataset_val_paths)}")
-
-                train_paths += dataset_train_paths
-                train_ages += dataset_train_ages
-                train_sexes += dataset_train_sexes
-                train_modalities += [MODALITY_MAP[m]] * len(dataset_train_paths)
-
-                val_paths += dataset_val_paths
-                val_ages += dataset_val_ages
-                val_sexes += dataset_val_sexes
-                val_modalities += [MODALITY_MAP[m]] * len(dataset_val_paths)
-
-    assert (
-        len(train_paths) == len(train_ages) == len(train_sexes) == len(train_modalities)
-    )
-    assert len(val_paths) == len(val_ages) == len(val_sexes) == len(val_modalities)
-
-    # Prepend root file path
-    train_paths = [os.path.join(root_dir, p) for p in train_paths]
-    val_paths = [os.path.join(root_dir, p) for p in val_paths]
-
-    train_data = list(zip(train_paths, train_ages, train_sexes, train_modalities))
-    val_data = list(zip(val_paths, val_ages, val_sexes, val_modalities))
 
     if verbose:
         print("\nTotal number of train paths before QC: ", len(train_data))
