@@ -291,10 +291,42 @@ def get_abcd_paths_and_metadata(root_dir):
     return res
 
 
+def print_dataset_info(dataset_name, paths_list):
+    """Print detailed information about a dataset's paths and metadata.
+    
+    Args:
+        dataset_name (str): Name of the dataset (e.g., 'HCP-YA', 'OpenNeuro')
+        paths_list (list): List of dictionaries containing paths and metadata
+    """
+    print(f"\n{'='*50}")
+    print(f"Dataset: {dataset_name}")
+    print(f"{'='*50}")
+    print(f"Total number of subjects: {len(paths_list)}")
+    
+    # Count subjects with complete data
+    complete_data = sum(1 for d in paths_list if 't1_path' in d and 't2_path' in d)
+    print(f"Subjects with both T1 and T2: {complete_data}")
+    print(f"Subjects missing either T1 or T2: {len(paths_list) - complete_data}")
+    
+    # Print sample of paths (first 3 subjects)
+    print("\nSample paths (first 3 subjects):")
+    for i, subject_data in enumerate(paths_list[:3]):
+        print(f"\nSubject {i+1}:")
+        for key, value in subject_data.items():
+            print(f"  {key}: {value}")
+    
+    # Print summary of missing data
+    missing_t1 = sum(1 for d in paths_list if 't1_path' not in d)
+    missing_t2 = sum(1 for d in paths_list if 't2_path' not in d)
+    print(f"\nMissing data summary:")
+    print(f"  Missing T1: {missing_t1}")
+    print(f"  Missing T2: {missing_t2}")
+
+
 def main():
     root_dir = "/simurgh/group/BWM/"
     root_data_dir = os.path.join(root_dir, "DataSets/")
-    save_dir = "/simurgh/u/alanqw/BWM/"
+    save_dir = "/simurgh/u/alanqw/BWM/pkl/"
 
     hcpya_root_dir = os.path.join(root_data_dir, "HCP-YA")
     hcpdev_root_dir = os.path.join(root_data_dir, "HCP-Development")
@@ -308,23 +340,23 @@ def main():
 
     # HCP-YA
     hcpya_paths = get_hcpya_paths_and_metadata(root_dir)
-    print(len(hcpya_paths))
+    print_dataset_info("HCP-YA", hcpya_paths)
 
     # HCP-Development
     hcpdev_paths = get_hcpdev_paths_and_metadata(root_dir)
-    print(len(hcpdev_paths))
+    print_dataset_info("HCP-Development", hcpdev_paths)
 
     # HCP-Aging
     hcpag_paths = get_hcpag_paths_and_metadata(root_dir)
-    print(len(hcpag_paths))
+    print_dataset_info("HCP-Aging", hcpag_paths)
 
     # OpenNeuro
     openneuro_paths = get_openneuro_paths_and_metadata(root_dir)
-    print(len(openneuro_paths))
+    print_dataset_info("OpenNeuro", openneuro_paths)
 
     # ABCD
     abcd_paths = get_abcd_paths_and_metadata(root_dir)
-    print(len(abcd_paths))
+    print_dataset_info("ABCD", abcd_paths)
 
     # Save the pickle files
     save_pkl(hcpya_paths, os.path.join(save_dir, "hcpya_relpaths_and_metadata.pkl"))

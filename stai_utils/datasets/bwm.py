@@ -21,6 +21,7 @@ from monai.transforms import (
 )
 
 MODALITY_MAP = {"t1": 0.0, "t2": 1.0}
+STUDY_MAP = {"hcpya": 'hcpya_relpaths_and_metadata.pkl', "hcpdev": 'hcpdev_relpaths_and_metadata.pkl', "hcpag": 'hcpag_relpaths_and_metadata.pkl', "openneuro": 'openneuro_relpaths_and_metadata.pkl', "abcd": 'abcd_relpaths_and_metadata.pkl'}
 
 
 def perform_data_qc(l):
@@ -68,26 +69,16 @@ def perform_data_qc(l):
     return qc
 
 
-def get_all_file_list_bwm(modality=("t1", "t2"), verbose=True, unpaired_modality=True):
+def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"], modality=("t1", "t2"), verbose=True, unpaired_modality=True):
     """Returns file list for data in BWM directory."""
 
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         root_dir = "/simurgh/group/BWM/"
-        pkl_files = [
-            "/simurgh/u/alanqw/BWM/hcpya_relpaths_and_metadata.pkl",
-            "/simurgh/u/alanqw/BWM/hcpdev_relpaths_and_metadata.pkl",
-            "/simurgh/u/alanqw/BWM/hcpag_relpaths_and_metadata.pkl",
-            "/simurgh/u/alanqw/BWM/openneuro_relpaths_and_metadata.pkl",
-        ]
+        pkl_files = [os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies]
     elif cluster_name == "haic":
         root_dir = "/hai/scratch/alanqw/BWM/"
-        pkl_files = [
-            "/hai/scratch/alanqw/BWM/pkl/hcpya_relpaths_and_metadata.pkl",
-            "/hai/scratch/alanqw/BWM/pkl/hcpdev_relpaths_and_metadata.pkl",
-            "/hai/scratch/alanqw/BWM/pkl/hcpag_relpaths_and_metadata.pkl",
-            "/hai/scratch/alanqw/BWM/pkl/openneuro_relpaths_and_metadata.pkl",
-        ]
+        pkl_files = [os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies]
     elif cluster_name == "sherlock":
         raise NotImplementedError
     else:
@@ -204,6 +195,7 @@ class BWM:
         spacing=(1.0, 1.0, 1.0),
         data_key="image",
         sample_balanced_age_for_training=False,
+        studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
     ):
         self.num_workers = num_workers
         assert age_normalization in [
@@ -219,6 +211,7 @@ class BWM:
         self.data_key = data_key
         self.sample_balanced_age_for_training = sample_balanced_age_for_training
         self.read_from_scr = read_from_scr
+        self.studies = studies
 
         self.age_mu = 0
         self.age_sigma = 1
@@ -274,7 +267,7 @@ class BWM:
         return ages
 
     def get_dataloaders(self, batch_size, drop_last=False):
-        train_data, val_data = get_all_file_list_bwm(modality=self.modality)
+        train_data, val_data = get_file_list_bwm(studies=self.studies, modality=self.modality)
         train_paths = [d["path"] for d in train_data]
         val_paths = [d["path"] for d in val_data]
         train_ages = [d["age"] for d in train_data]
@@ -417,7 +410,7 @@ class BWM:
 
 
 if __name__ == "__main__":
-    dataset = BWMSherlock(
+    dataset = BWM(
         img_size=(128, 128, 128),
         num_workers=4,
         zscore_age=True,
