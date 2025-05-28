@@ -43,7 +43,11 @@ def perform_data_qc(l):
         return float(x)  # Will raise ValueError/TypeError if not convertible
 
     qc = []
-    for p, a, s, m in l:
+    for d in l:
+        p = d["path"]
+        a = d["age"]
+        s = d["sex"]
+        m = d["modality"]
         try:
             a_val = safe_convert_to_float(a)
             s_val = safe_convert_to_float(s)
@@ -59,30 +63,30 @@ def perform_data_qc(l):
             continue
 
         # If all checks pass, add it
-        qc.append((p, a_val, s_val, m_val))
+        qc.append({"path": p, "age": a_val, "sex": s_val, "modality": m_val})
 
     return qc
 
 
-def get_all_file_list_bwm(modality=("t1", "t2"), verbose=True, unpaired_modality=False):
+def get_all_file_list_bwm(modality=("t1", "t2"), verbose=True, unpaired_modality=True):
     """Returns file list for data in BWM directory."""
 
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
-        root_dir = '/simurgh/group/BWM/'
+        root_dir = "/simurgh/group/BWM/"
         pkl_files = [
-            '/simurgh/u/alanqw/BWM/hcpya_relpaths_and_metadata.pkl', 
-            '/simurgh/u/alanqw/BWM/hcpdev_relpaths_and_metadata.pkl', 
-            '/simurgh/u/alanqw/BWM/hcpag_relpaths_and_metadata.pkl', 
-            '/simurgh/u/alanqw/BWM/openneuro_relpaths_and_metadata.pkl'
+            "/simurgh/u/alanqw/BWM/hcpya_relpaths_and_metadata.pkl",
+            "/simurgh/u/alanqw/BWM/hcpdev_relpaths_and_metadata.pkl",
+            "/simurgh/u/alanqw/BWM/hcpag_relpaths_and_metadata.pkl",
+            "/simurgh/u/alanqw/BWM/openneuro_relpaths_and_metadata.pkl",
         ]
     elif cluster_name == "haic":
-        root_dir = '/hai/scratch/alanqw/BWM/'
+        root_dir = "/hai/scratch/alanqw/BWM/"
         pkl_files = [
-            '/hai/scratch/alanqw/BWM/pkl/hcpya_relpaths_and_metadata.pkl', 
-            '/hai/scratch/alanqw/BWM/pkl/hcpdev_relpaths_and_metadata.pkl', 
-            '/hai/scratch/alanqw/BWM/pkl/hcpag_relpaths_and_metadata.pkl', 
-            '/hai/scratch/alanqw/BWM/pkl/openneuro_relpaths_and_metadata.pkl'
+            "/hai/scratch/alanqw/BWM/pkl/hcpya_relpaths_and_metadata.pkl",
+            "/hai/scratch/alanqw/BWM/pkl/hcpdev_relpaths_and_metadata.pkl",
+            "/hai/scratch/alanqw/BWM/pkl/hcpag_relpaths_and_metadata.pkl",
+            "/hai/scratch/alanqw/BWM/pkl/openneuro_relpaths_and_metadata.pkl",
         ]
     elif cluster_name == "sherlock":
         raise NotImplementedError
@@ -100,29 +104,45 @@ def get_all_file_list_bwm(modality=("t1", "t2"), verbose=True, unpaired_modality
     for pkl_file in pkl_files:
         with open(pkl_file, "rb") as f:
             data = pickle.load(f)
-        
+
         # Prepend root file path
         for d in data:
-            if 't1_path' in d:
-                d['t1_path'] = os.path.join(root_dir, d['t1_path'])
-            if 't2_path' in d:
-                d['t2_path'] = os.path.join(root_dir, d['t2_path'])
+            if "t1_path" in d:
+                d["t1_path"] = os.path.join(root_dir, d["t1_path"])
+            if "t2_path" in d:
+                d["t2_path"] = os.path.join(root_dir, d["t2_path"])
 
         # Unpaired modality
         if unpaired_modality:
             unpaired_data = []
             for d in data:
-                if 't1_path' in d:
-                    unpaired_data.append({'path': d['t1_path'], 'age': d['age'], 'sex': d['sex'], 'modality': 't1'})
-                if 't2_path' in d:
-                    unpaired_data.append({'path': d['t2_path'], 'age': d['age'], 'sex': d['sex'], 'modality': 't2'})
+                if "t1_path" in d:
+                    unpaired_data.append(
+                        {
+                            "path": d["t1_path"],
+                            "age": d["age"],
+                            "sex": d["sex"],
+                            "modality": MODALITY_MAP["t1"],
+                        }
+                    )
+                if "t2_path" in d:
+                    unpaired_data.append(
+                        {
+                            "path": d["t2_path"],
+                            "age": d["age"],
+                            "sex": d["sex"],
+                            "modality": MODALITY_MAP["t2"],
+                        }
+                    )
             data = unpaired_data
-        
+
         # Split data into train and val
-        train_split, val_split = data[:int(len(data)*0.8)], data[int(len(data)*0.8):]
+        train_split, val_split = (
+            data[: int(len(data) * 0.8)],
+            data[int(len(data) * 0.8) :],
+        )
         train_data.extend(train_split)
         val_data.extend(val_split)
-
 
     if verbose:
         print("\nTotal number of train paths before QC: ", len(train_data))
@@ -158,39 +178,17 @@ class FileListDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = self.file_list[idx]
-        try:
-            data = {self.data_key: img_path}
+        data = {self.data_key: img_path}
 
-            if self.transform:
-                data = self.transform(data)
+        if self.transform:
+            data = self.transform(data)
 
-            condition_tensor = self.condition_list[idx]
-            data["img_path"] = img_path
-            data["age"] = condition_tensor[0]
-            data["sex"] = condition_tensor[1]
-            data["modality"] = condition_tensor[2]
-            return data
-        except Exception as e:
-            print(f"Error loading file {img_path}:")
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {str(e)}")
-            # Try to get file size and shape info
-            try:
-                if os.path.exists(img_path):
-                    file_size = os.path.getsize(img_path)
-                    print(f"File size: {file_size} bytes")
-                    # Try to load the file directly to check its shape
-                    try:
-                        arr = np.load(img_path, allow_pickle=True)
-                        print(f"Array shape: {arr.shape}")
-                        print(f"Array size: {arr.size}")
-                    except Exception as load_error:
-                        print(f"Could not load file directly: {str(load_error)}")
-                else:
-                    print("File does not exist")
-            except Exception as info_error:
-                print(f"Could not get file info: {str(info_error)}")
-            raise  # Re-raise the original exception
+        condition_tensor = self.condition_list[idx]
+        data["img_path"] = img_path
+        data["age"] = condition_tensor[0]
+        data["sex"] = condition_tensor[1]
+        data["modality"] = condition_tensor[2]
+        return data
 
 
 class BWM:
@@ -228,35 +226,27 @@ class BWM:
         self.train_transforms = Compose(
             [
                 LoadImaged(keys=[data_key]),
-                EnsureChannelFirstd(keys=[data_key]),
-                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-                EnsureTyped(keys=[data_key]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim="no_channel"),
+                EnsureTyped(keys=[data_key], dtype=torch.float32),
                 Orientationd(keys=[data_key], axcodes="RAS"),
                 Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
                 ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-                # train_crop_transform,
                 ScaleIntensityRangePercentilesd(
-                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1, clip=True
                 ),
-                EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
         )
         self.val_transforms = Compose(
             [
                 LoadImaged(keys=[data_key]),
-                EnsureChannelFirstd(keys=[data_key]),
-                Lambdad(keys=data_key, func=lambda x: x[0, :, :, :]),
-                EnsureChannelFirstd(keys=[data_key], channel_dim=0),
-                EnsureTyped(keys=[data_key]),
+                EnsureChannelFirstd(keys=[data_key], channel_dim="no_channel"),
+                EnsureTyped(keys=[data_key], dtype=torch.float32),
                 Orientationd(keys=[data_key], axcodes="RAS"),
                 Spacingd(keys=[data_key], pixdim=spacing, mode=("bilinear")),
                 ResizeWithPadOrCropd(keys=[data_key], spatial_size=img_size),
-                # CenterSpatialCropd(keys=["image"], roi_size=val_patch_size),
                 ScaleIntensityRangePercentilesd(
-                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1
+                    keys=data_key, lower=0, upper=99.5, b_min=0, b_max=1, clip=True
                 ),
-                EnsureTyped(keys=data_key, dtype=torch.float32),
             ]
         )
 
@@ -270,7 +260,7 @@ class BWM:
 
     @staticmethod
     def _min_max_scale(x, min_val, max_val):
-        return (x - min_val) / (max_val - min_val)
+        return (x - min_val) / (max_val - min_val + 1e-8)
 
     @staticmethod
     def _inverse_min_max_scale(x, min_val, max_val):
@@ -284,12 +274,15 @@ class BWM:
         return ages
 
     def get_dataloaders(self, batch_size, drop_last=False):
-        train_data, val_data = get_all_file_list_bwm_sherlock(
-            read_from_scr=self.read_from_scr, modality=self.modality
-        )
-
-        train_paths, train_ages, train_sexes, train_modalities = zip(*train_data)
-        val_paths, val_ages, val_sexes, val_modalities = zip(*val_data)
+        train_data, val_data = get_all_file_list_bwm(modality=self.modality)
+        train_paths = [d["path"] for d in train_data]
+        val_paths = [d["path"] for d in val_data]
+        train_ages = [d["age"] for d in train_data]
+        val_ages = [d["age"] for d in val_data]
+        train_sexes = [d["sex"] for d in train_data]
+        val_sexes = [d["sex"] for d in val_data]
+        train_modalities = [d["modality"] for d in train_data]
+        val_modalities = [d["modality"] for d in val_data]
 
         train_ages = np.array(train_ages)
         val_ages = np.array(val_ages)
