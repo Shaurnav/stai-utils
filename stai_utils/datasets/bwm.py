@@ -21,7 +21,13 @@ from monai.transforms import (
 )
 
 MODALITY_MAP = {"t1": 0.0, "t2": 1.0}
-STUDY_MAP = {"hcpya": 'hcpya_relpaths_and_metadata.pkl', "hcpdev": 'hcpdev_relpaths_and_metadata.pkl', "hcpag": 'hcpag_relpaths_and_metadata.pkl', "openneuro": 'openneuro_relpaths_and_metadata.pkl', "abcd": 'abcd_relpaths_and_metadata.pkl'}
+STUDY_MAP = {
+    "hcpya": "hcpya_relpaths_and_metadata.pkl",
+    "hcpdev": "hcpdev_relpaths_and_metadata.pkl",
+    "hcpag": "hcpag_relpaths_and_metadata.pkl",
+    "openneuro": "openneuro_relpaths_and_metadata.pkl",
+    "abcd": "abcd_relpaths_and_metadata.pkl",
+}
 
 
 def perform_data_qc(l):
@@ -69,25 +75,46 @@ def perform_data_qc(l):
     return qc
 
 
-def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"], modality=("t1", "t2"), verbose=True, unpaired_modality=True):
-    """Returns file list for data in BWM directory."""
+def get_file_list_bwm(
+    studies=("hcpya", "hcpdev", "hcpag", "openneuro", "abcd"),
+    modality=("t1", "t2"),
+    verbose=True,
+    unpaired_modality=True,
+):
+    """Returns file list for data in BWM directory.
+
+    Args:
+        studies: Tuple of study names to include
+        modality: Tuple of modalities to include ('t1' and/or 't2')
+        verbose: Whether to print statistics about the data
+        unpaired_modality: If True, treats each modality as a separate sample. If False,
+                          only includes samples that have all requested modalities.
+    """
+    if isinstance(modality, str):
+        modality = [modality]
+    if isinstance(studies, str):
+        studies = [studies]
+
+    # Convert modality strings to their numeric values for filtering
+    modality_values = [MODALITY_MAP[m] for m in modality]
 
     cluster_name = os.getenv("CLUSTER_NAME")
     if cluster_name == "sc":
         root_dir = "/simurgh/group/BWM/"
-        pkl_files = [os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies]
+        pkl_files = [
+            os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies
+        ]
     elif cluster_name == "haic":
         root_dir = "/hai/scratch/alanqw/BWM/"
-        pkl_files = [os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies]
+        pkl_files = [
+            os.path.join(root_dir, "pkl", STUDY_MAP[study]) for study in studies
+        ]
     elif cluster_name == "sherlock":
         raise NotImplementedError
     else:
         raise ValueError(
             f"Unknown cluster name: {cluster_name}. Please set the CLUSTER_NAME environment variable correctly."
         )
-
-    if isinstance(modality, str):
-        modality = [modality]
 
     train_data = []
     val_data = []
@@ -107,7 +134,8 @@ def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
         if unpaired_modality:
             unpaired_data = []
             for d in data:
-                if "t1_path" in d:
+                # Only add T1 if it's requested and exists
+                if "t1_path" in d and MODALITY_MAP["t1"] in modality_values:
                     unpaired_data.append(
                         {
                             "path": d["t1_path"],
@@ -116,7 +144,8 @@ def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
                             "modality": MODALITY_MAP["t1"],
                         }
                     )
-                if "t2_path" in d:
+                # Only add T2 if it's requested and exists
+                if "t2_path" in d and MODALITY_MAP["t2"] in modality_values:
                     unpaired_data.append(
                         {
                             "path": d["t2_path"],
@@ -126,6 +155,18 @@ def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
                         }
                     )
             data = unpaired_data
+        else:
+            # For paired modality, only keep entries that have all requested modalities
+            filtered_data = []
+            for d in data:
+                has_all_modalities = True
+                if MODALITY_MAP["t1"] in modality_values and "t1_path" not in d:
+                    has_all_modalities = False
+                if MODALITY_MAP["t2"] in modality_values and "t2_path" not in d:
+                    has_all_modalities = False
+                if has_all_modalities:
+                    filtered_data.append(d)
+            data = filtered_data
 
         # Split data into train and val
         train_split, val_split = (
@@ -139,6 +180,7 @@ def get_file_list_bwm(studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
         print("\nTotal number of train paths before QC: ", len(train_data))
         print("Total number of val paths before QC: ", len(val_data))
         print("Total number of images before QC: ", len(train_data) + len(val_data))
+        print(f"Filtering for modalities: {modality}")
 
     train_data = perform_data_qc(train_data)
     val_data = perform_data_qc(val_data)
@@ -195,7 +237,7 @@ class BWM:
         spacing=(1.0, 1.0, 1.0),
         data_key="image",
         sample_balanced_age_for_training=False,
-        studies=["hcpya", "hcpdev", "hcpag", "openneuro", "abcd"],
+        studies=("hcpya", "hcpdev", "hcpag", "openneuro", "abcd"),
     ):
         self.num_workers = num_workers
         assert age_normalization in [
@@ -267,7 +309,9 @@ class BWM:
         return ages
 
     def get_dataloaders(self, batch_size, drop_last=False):
-        train_data, val_data = get_file_list_bwm(studies=self.studies, modality=self.modality)
+        train_data, val_data = get_file_list_bwm(
+            studies=self.studies, modality=self.modality
+        )
         train_paths = [d["path"] for d in train_data]
         val_paths = [d["path"] for d in val_data]
         train_ages = [d["age"] for d in train_data]

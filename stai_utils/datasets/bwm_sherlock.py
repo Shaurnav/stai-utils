@@ -412,6 +412,13 @@ class BWMSherlock:
             ages = self._min_max_scale(ages, self.age_min, self.age_max)
         return ages
 
+    def unnormalize_age(self, ages):
+        if self.age_normalization == "zscore":
+            ages = self._inverse_zscore_normalize(ages, self.age_mu, self.age_sigma)
+        elif self.age_normalization == "min-max":
+            ages = self._inverse_min_max_scale(ages, self.age_min, self.age_max)
+        return ages
+
     def get_dataloaders(self, batch_size, drop_last=False):
         train_data, val_data = get_all_file_list_bwm_sherlock(
             read_from_scr=self.read_from_scr, modality=self.modality
